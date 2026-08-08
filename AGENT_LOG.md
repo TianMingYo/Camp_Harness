@@ -11,6 +11,7 @@
 - **Manual intervention:** user approved four design sections. No production code has been written.
 - **Repository intervention:** the provided `.git` directory was empty/invalid and read-only in the sandbox; after explicit approval it was initialized locally, and the design documents were committed as `a26df5c`.
 - **Specification revision:** after reviewing `SPEC.md`, the human owner rejected a fixed 500ms UI response requirement as deployment-dependent. The performance section now uses a reference-environment p95 baseline, asynchronous long-running work, and measured deployment results. No functional acceptance criteria were weakened.
+- **Plan checkpoint:** `writing-plans` produced `docs/superpowers/plans/2026-08-08-feedback-loop-harness.md` and the course-required root mirror `PLAN.md`. The self-review found and fixed three interface issues before saving the plan: filesystem action factories, the credential-provider protocol, and the mock-loop constructor. Both plan files have the same SHA-256 hash.
 - **Lesson:** deterministic feedback classification and explicit execution boundaries must remain in project code, not prompts; model output is only an action proposal.
 
 ## Workflow commitment
