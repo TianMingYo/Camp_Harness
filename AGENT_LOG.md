@@ -9,6 +9,7 @@
 - **Human decisions:** feedback loop as the main contribution; natural-language small feature implementation; local Git repository path; automatic validation detection with user override; plan approval followed by autonomous safe in-repo execution; OpenAI-compatible API; local full WebUI plus public mock demo; default maximum 5 iterations.
 - **Subagents:** none yet; implementation is blocked by the brainstorming hard gate until SPEC and PLAN are approved and cold-start validation is complete.
 - **Manual intervention:** user approved four design sections. No production code has been written.
+- **Repository intervention:** the provided `.git` directory was empty/invalid and read-only in the sandbox; after explicit approval it was initialized locally, and the design documents were committed as `a26df5c`.
 - **Lesson:** deterministic feedback classification and explicit execution boundaries must remain in project code, not prompts; model output is only an action proposal.
 
 ## Workflow commitment
