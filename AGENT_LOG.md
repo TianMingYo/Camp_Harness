@@ -10,6 +10,7 @@
 - **Subagents:** none yet; implementation is blocked by the brainstorming hard gate until SPEC and PLAN are approved and cold-start validation is complete.
 - **Manual intervention:** user approved four design sections. No production code has been written.
 - **Repository intervention:** the provided `.git` directory was empty/invalid and read-only in the sandbox; after explicit approval it was initialized locally, and the design documents were committed as `a26df5c`.
+- **Specification revision:** after reviewing `SPEC.md`, the human owner rejected a fixed 500ms UI response requirement as deployment-dependent. The performance section now uses a reference-environment p95 baseline, asynchronous long-running work, and measured deployment results. No functional acceptance criteria were weakened.
 - **Lesson:** deterministic feedback classification and explicit execution boundaries must remain in project code, not prompts; model output is only an action proposal.
 
 ## Workflow commitment
