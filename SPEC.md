@@ -90,6 +90,10 @@
 - `POLICY_BLOCKED` 和待审批危险动作暂停在 `awaiting_action_approval`。
 - 暂停时保留工作区和完整审计记录，用户可以调整授权或继续。
 
+状态机使用一个内部的客观验收门：`running` 只能在验证命令全部通过后进入
+`validation_passed`，再由 `mark_succeeded` 进入 `succeeded`；因此模型或编排器不能从
+`running` 直接宣称成功。`validation_passed` 不作为用户需要处理的暂停状态展示。
+
 ### 4.7 凭据管理
 
 - 首次使用通过隐藏输入录入 key，供应商、base URL 和模型可更新。
@@ -167,7 +171,7 @@ Action Parser -> Policy Engine -> HITL Approval
 
 ### 危险动作
 
-Policy Engine 对路径逃逸、删除、网络、Git 发布、敏感文件读取和未声明命令执行阻断并请求 HITL。该机制由代码测试，不依赖提示词中“请注意安全”。
+Policy Engine 对路径逃逸、删除、网络、Git 发布、敏感文件读取和未声明命令执行阻断并请求 HITL。`Action` 至少区分文件读写/删除、命令执行、网络访问和 Git push；网络、Git push、删除及 shell 链接命令默认 `require_approval`，敏感文件访问和路径逃逸默认 `deny`。敏感文件规则优先于删除审批规则。该机制由代码测试，不依赖提示词中“请注意安全”。
 
 ### 记忆与上下文
 

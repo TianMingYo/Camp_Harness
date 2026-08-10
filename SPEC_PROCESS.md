@@ -67,3 +67,18 @@
 - 人工确认公网演示不能访问本机仓库或真实 key。
 - Git 元数据当前无效；实现前必须按 `using-git-worktrees` 规则处理仓库状态。
 - 课程文档对 GitHub Actions 与 `.gitlab-ci.yml` 的要求存在冲突，留到计划/交付平台确认时处理，并记录任何偏离。
+
+## Cold-start validation (2026-08-08)
+
+- **Required context:** a different supported coding-agent type received only `SPEC.md` and `PLAN.md` and was instructed to attempt Tasks 1-2 with TDD.
+- **Gemini CLI 0.39.0:** both the default `gemini-3.1-pro-preview` model and explicit `gemini-2.5-flash` model exhausted ten retries with `503 model_not_found`.
+- **Claude Code 2.1.118:** after locating the existing portable Git Bash, the CLI exited with `API Error: Unable to connect to API (ConnectionRefused)`.
+- **Pause point:** neither agent reached the specification, so there are no independent interface interpretations or ambiguities to apply.
+- **Decision:** NO-GO. Per PLAN Task 0, implementation is paused for a human choice of an available supported second agent/provider or an explicit documented deviation.
+
+### Cold-start follow-up (2026-08-10)
+
+- **Second agent:** Claude Code 2.1.118 using the human-configured GLM 5.2 provider.
+- **Result:** the second CLI was available and completed an isolated Task 1-2 attempt using only the approved documents. It found no missing basic sample assertions, but could not run Python tests because unattended execution required approval.
+- **Document revisions:** the state machine now has an explicit internal `validation_passed` gate; `Workspace.resolve_repo()` requires a `.git` marker; `Action` includes command/network/Git-push proposals; sensitive-file denial precedes deletion approval; policy tests use temporary Git markers.
+- **Decision:** GO for specification review after the revisions. The generated cold-start source remains excluded from implementation; its missing runtime test evidence is a logged environment deviation, and primary task implementers must provide actual RED/GREEN runs.

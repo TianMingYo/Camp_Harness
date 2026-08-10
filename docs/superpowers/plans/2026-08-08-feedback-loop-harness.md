@@ -100,8 +100,13 @@ git commit -m "docs: record cold-start specification validation"
 
 **Interfaces:**
 - Produces `TaskState`, `TaskEvent`, `Task`, `Action`, `ValidationCommand`, `Feedback`, `Approval`, `IterationRecord`.
-- `Action.read(path)`, `Action.write(path, content)`, and `Action.delete(path)` are the only test and orchestration factories for filesystem actions.
+- `Action.read(path)`, `Action.write(path, content)`, and `Action.delete(path)` are the filesystem factories. `Action.command(command)`, `Action.network(url)`, and `Action.git_push(target)` represent non-filesystem proposals so policy rules are testable before execution.
 - Produces `TaskStateMachine(current: TaskState)` with `transition(event: TaskEvent) -> TaskState` and `can_accept(event: TaskEvent) -> bool`.
+
+The state table is explicit: `RUNNING -> VALIDATION_PASSED` on objective validation, then
+`VALIDATION_PASSED -> SUCCEEDED` on `MARK_SUCCEEDED`; `MARK_SUCCEEDED` is illegal from
+`RUNNING`. `VALIDATION_PASSED` is an internal gate state even though it is not a user-facing
+pause state.
 
 - [ ] **Step 1: Write the failing model/state tests**
 
@@ -117,6 +122,10 @@ def test_approved_plan_enters_running():
 def test_running_task_cannot_skip_to_success_without_validation():
     machine = TaskStateMachine(TaskState.RUNNING)
     assert machine.can_accept(TaskEvent.MARK_SUCCEEDED) is False
+
+def test_command_and_network_actions_are_policy_inputs():
+    assert Action.command("pytest -q").type is ActionType.COMMAND
+    assert Action.network("https://example.test").type is ActionType.NETWORK
 ```
 
 - [ ] **Step 2: Run the focused tests and verify RED**
@@ -151,18 +160,31 @@ git commit -m "feat: add task domain models and state machine"
 - [ ] **Step 1: Write failing boundary and risk tests**
 
 ```python
+def git_workspace(tmp_path):
+    (tmp_path / ".git").mkdir()
+    return Workspace(tmp_path)
+
 def test_resolve_child_rejects_parent_escape(tmp_path):
-    workspace = Workspace(tmp_path)
+    workspace = git_workspace(tmp_path)
     with pytest.raises(PathBoundaryError):
         workspace.resolve_child("../outside.txt")
 
 def test_policy_requires_approval_for_delete(tmp_path):
-    decision = PolicyEngine().check(Action.delete("inside.txt"), Workspace(tmp_path))
+    decision = PolicyEngine().check(Action.delete("inside.txt"), git_workspace(tmp_path))
     assert decision.kind is DecisionKind.REQUIRE_APPROVAL
 
 def test_policy_denies_sensitive_file_read(tmp_path):
-    decision = PolicyEngine().check(Action.read(".env"), Workspace(tmp_path))
+    decision = PolicyEngine().check(Action.read(".env"), git_workspace(tmp_path))
     assert decision.kind is DecisionKind.DENY
+
+def test_sensitive_delete_is_denied_before_delete_approval(tmp_path):
+    decision = PolicyEngine().check(Action.delete(".env"), git_workspace(tmp_path))
+    assert decision.kind is DecisionKind.DENY
+
+def test_network_and_git_push_require_approval(tmp_path):
+    workspace = git_workspace(tmp_path)
+    assert PolicyEngine().check(Action.network("https://example.test"), workspace).kind is DecisionKind.REQUIRE_APPROVAL
+    assert PolicyEngine().check(Action.git_push("origin/main"), workspace).kind is DecisionKind.REQUIRE_APPROVAL
 ```
 
 - [ ] **Step 2: Run tests and verify RED**
@@ -171,7 +193,11 @@ Run `python -m pytest tests/unit/test_workspace.py tests/unit/test_policy.py -q`
 
 - [ ] **Step 3: Implement canonical path checks and explicit risk rules**
 
-Resolve symlinks before containment checks, compare normalized paths against the repository root, and classify delete, network, Git push, sensitive-file access, shell chaining, and undeclared commands. Keep the policy pure and deterministic.
+`Workspace.resolve_repo()` requires a `.git` directory or worktree file and returns the canonical
+repository root; tests create a temporary `.git` marker. Resolve symlinks before containment
+checks, compare normalized paths against the repository root, and classify delete, network, Git
+push, sensitive-file access, shell chaining, and undeclared commands. Sensitive-file denial wins
+over delete approval. Keep the policy pure and deterministic.
 
 - [ ] **Step 4: Run tests and verify GREEN**
 

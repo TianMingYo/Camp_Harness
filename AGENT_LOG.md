@@ -14,6 +14,25 @@
 - **Plan checkpoint:** `writing-plans` produced `docs/superpowers/plans/2026-08-08-feedback-loop-harness.md` and the course-required root mirror `PLAN.md`. The self-review found and fixed three interface issues before saving the plan: filesystem action factories, the credential-provider protocol, and the mock-loop constructor. Both plan files have the same SHA-256 hash.
 - **Lesson:** deterministic feedback classification and explicit execution boundaries must remain in project code, not prompts; model output is only an action proposal.
 
+## 2026-08-08 - SDD cold-start gate
+
+- **Task:** independent cold-start validation of PLAN Tasks 1-2 before implementation.
+- **Context restriction:** each attempt received only `SPEC.md` and `PLAN.md` in a fresh temporary directory; no prior conversation, source tree, or repository context was supplied.
+- **Gemini CLI 0.39.0:** default `gemini-3.1-pro-preview` and explicit `gemini-2.5-flash` each exhausted ten retries with `503 model_not_found` and created no files.
+- **Claude Code 2.1.118:** initially could not discover Git Bash. After configuring the existing portable `bash.exe` through `CLAUDE_CODE_GIT_BASH_PATH`, it started but exited after about three minutes with `API Error: Unable to connect to API (ConnectionRefused)` before attempting either task.
+- **Result:** Task 0 is blocked by external supported-agent availability. No production code was written. Detailed evidence is in the SDD workspace cold-start reports.
+- **Deviation:** SDD implementation dispatch is paused rather than silently replacing the required fresh-agent gate. Human approval is required to provide an available second-agent model/provider or authorize proceeding with this documented deviation.
+
+## 2026-08-10 - Cold-start gate rerun with Claude Code / GLM 5.2
+
+- **Agent type:** Claude Code 2.1.118, configured by the human with the GLM 5.2 model.
+- **Context restriction:** fresh session received only `SPEC.md` and `PLAN.md`; no prior conversation, memory, repository source, or generated implementation was supplied.
+- **Attempt:** independently drafted Task 1-2 tests and implementation, but did not commit or merge any files.
+- **TDD evidence:** the agent documented the expected RED failures and static GREEN reasoning, but the unattended CLI could not obtain approval to run Python/pytest. Runtime GREEN is therefore unverified.
+- **Findings:** the state transition gate, real-Git-root requirement, sensitive-delete precedence, and non-filesystem action model were underspecified.
+- **Revision:** SPEC and PLAN now explicitly define `VALIDATION_PASSED`, require `.git` markers for canonical workspaces, add command/network/Git-push actions, and make sensitive-file denial take precedence. The cold-start implementation remains isolated and is not part of the feature branch.
+- **Decision:** cold-start specification review is GO after the documented revisions. The inability to run Python in the unattended secondary CLI is a recorded execution-environment deviation; every primary implementation task must still capture real RED and GREEN test runs before its commit.
+
 ## Workflow commitment
 
 The remaining Superpowers workflow is `writing-plans` → `using-git-worktrees` →
