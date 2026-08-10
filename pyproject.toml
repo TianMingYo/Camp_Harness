@@ -1,0 +1,17 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "feedbackloop-harness"
+version = "0.1.0"
+description = "A deterministic feedback-loop harness for coding agents"
+requires-python = ">=3.12"
+dependencies = ["pydantic>=2.10,<3"]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<9"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
