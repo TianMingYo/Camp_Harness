@@ -109,11 +109,15 @@ def create_app(
 
     @app.post("/providers/{provider}/credentials")
     def set_credentials(provider: str, request: CredentialRequest):
+        if public_demo:
+            raise HTTPException(403, "public demo does not accept credentials")
         credential_service.set(provider, request.key)
         return credential_service.status(provider).model_dump()
 
     @app.delete("/providers/{provider}/credentials")
     def clear_credentials(provider: str):
+        if public_demo:
+            raise HTTPException(403, "public demo does not manage credentials")
         credential_service.clear(provider)
         return credential_service.status(provider).model_dump()
 

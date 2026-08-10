@@ -101,6 +101,15 @@ def test_public_demo_rejects_local_repo_path(tmp_path: Path):
     assert response.status_code == 400
 
 
+def test_public_demo_rejects_credentials(tmp_path: Path):
+    test_client, _ = client(tmp_path, public_demo=True)
+    response = test_client.post(
+        "/providers/demo/credentials", json={"key": "must-not-be-stored"}
+    )
+    assert response.status_code == 403
+    assert "must-not-be-stored" not in response.text
+
+
 def test_webui_root_is_accessible(tmp_path: Path):
     test_client, _ = client(tmp_path)
     response = test_client.get("/")

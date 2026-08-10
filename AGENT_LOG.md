@@ -69,6 +69,10 @@
   `AWAITING_PLAN_APPROVAL`; the focused test was RED before the fix and GREEN after it. SQLite
   connections were also changed to operation-scoped close semantics after the demo exposed a
   Windows file lock.
+- **Final review:** the Claude Code / GLM 5.2 whole-branch review was rejected by the provider's
+  `sensitive_words_detected` filter, so the external result is unavailable. Controller review
+  found that public demo mode still accepted credential writes; a RED integration test reproduced
+  it, and public-demo credential set/clear now return 403 while local mode remains enabled.
 
 ## Workflow commitment
 
