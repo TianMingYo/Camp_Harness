@@ -31,6 +31,8 @@ class FakeExecutor:
             path = self.workspace.resolve_child(action.path_or_command)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(action.content or "", encoding="utf-8")
+        if action.type.value == "delete":
+            self.workspace.resolve_child(action.path_or_command).unlink()
 
     def validate(self, command: ValidationCommand) -> CommandResult:
         return self.results.popleft()
@@ -104,15 +106,53 @@ def test_two_equivalent_rounds_pause_for_no_progress(tmp_path: Path):
     assert len(result.iterations) == 2
 
 
+def test_provider_failure_records_feedback_and_fails_task(tmp_path: Path):
+    task, store, loop = setup_loop(tmp_path, [], [])
+    loop.approve_plan(task.id)
+
+    result = loop.run(task.id)
+
+    assert result.state is TaskState.FAILED
+    assert store.get_task(task.id).state is TaskState.FAILED
+    assert len(result.iterations) == 1
+    assert result.iterations[0].feedback.kind is FeedbackKind.COMMAND_ERROR
+
+
 def test_dangerous_action_pauses_for_approval(tmp_path: Path):
     task, _, loop = setup_loop(
         tmp_path,
         [LLMResponse(actions=(Action.delete("old.txt"),))],
         [],
     )
+    (Path(task.repo_root) / "old.txt").write_text("obsolete", encoding="utf-8")
     loop.approve_plan(task.id)
     result = loop.run(task.id)
     assert result.state is TaskState.AWAITING_ACTION_APPROVAL
     assert result.pending_approval is not None
 
     assert loop.resolve_approval(result.pending_approval.id, ApprovalDecision.ALLOWED) is TaskState.RUNNING
+
+
+def test_approved_action_is_applied_before_loop_resumes_at_next_iteration(tmp_path: Path):
+    task, store, loop = setup_loop(
+        tmp_path,
+        [
+            LLMResponse(actions=(Action.delete("old.txt"),)),
+            LLMResponse(actions=()),
+        ],
+        [CommandResult(kind="test", exit_code=0, stdout="passed")],
+    )
+    old_file = Path(task.repo_root) / "old.txt"
+    old_file.write_text("obsolete", encoding="utf-8")
+    loop.approve_plan(task.id)
+    paused = loop.run(task.id)
+
+    assert loop.resolve_approval(
+        paused.pending_approval.id, ApprovalDecision.ALLOWED
+    ) is TaskState.RUNNING
+    assert not old_file.exists()
+
+    resumed = loop.run(task.id)
+
+    assert resumed.state is TaskState.SUCCEEDED
+    assert [item.number for item in store.list_iterations(task.id)] == [1, 2]

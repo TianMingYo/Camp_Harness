@@ -113,6 +113,9 @@ class Task(DomainModel):
     id: str = Field(default_factory=_new_id)
     repo_root: str = Field(min_length=1)
     request: str = Field(min_length=1)
+    provider: str | None = None
+    base_url: str | None = None
+    model: str | None = None
     branch: str | None = None
     validation_commands: tuple[ValidationCommand, ...] = ()
     max_iterations: int = Field(default=5, ge=1, le=100)
@@ -124,6 +127,13 @@ class Task(DomainModel):
     def reject_blank_text(cls, value: str) -> str:
         if not value.strip():
             raise ValueError("value must not be blank")
+        return value
+
+    @field_validator("provider", "base_url", "model")
+    @classmethod
+    def reject_blank_provider_config(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError("provider configuration must not be blank")
         return value
 
     @classmethod

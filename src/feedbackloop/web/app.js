@@ -4,9 +4,41 @@ const approve = document.querySelector("#approve");
 let currentTask = null;
 let poller = null;
 
+async function decideApproval(id, decision) {
+  const response = await fetch(`/approvals/${id}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ decision }),
+  });
+  status.textContent = JSON.stringify(await response.json(), null, 2);
+  if (currentTask) await refresh(currentTask);
+}
+
+function renderApprovals(approvals = []) {
+  const container = document.querySelector("#pending-approvals");
+  container.replaceChildren();
+  for (const approval of approvals.filter((item) => item.decision === "pending")) {
+    const row = document.createElement("div");
+    row.className = "approval-row";
+    const reason = document.createElement("span");
+    reason.textContent = approval.reason;
+    const allow = document.createElement("button");
+    allow.textContent = "Allow";
+    allow.addEventListener("click", () => decideApproval(approval.id, "allowed"));
+    const deny = document.createElement("button");
+    deny.textContent = "Deny";
+    deny.className = "secondary";
+    deny.addEventListener("click", () => decideApproval(approval.id, "denied"));
+    row.append(reason, allow, deny);
+    container.append(row);
+  }
+}
+
 async function refresh(id) {
   const response = await fetch(`/tasks/${id}`);
-  status.textContent = JSON.stringify(await response.json(), null, 2);
+  const payload = await response.json();
+  status.textContent = JSON.stringify(payload, null, 2);
+  renderApprovals(payload.approvals);
 }
 
 function startPolling(id) {
@@ -15,13 +47,35 @@ function startPolling(id) {
 }
 
 button.addEventListener("click", async () => {
+  let validationArgs;
+  try {
+    validationArgs = JSON.parse(document.querySelector("#validation-args").value || "[]");
+    if (!Array.isArray(validationArgs) || validationArgs.some((item) => typeof item !== "string")) {
+      throw new TypeError("Validation arguments must be a JSON string array");
+    }
+  } catch (error) {
+    status.textContent = error.message;
+    return;
+  }
+  const validationExecutable = document.querySelector("#validation-executable").value.trim();
+  const body = {
+    repo_root: document.querySelector("#repo").value,
+    request: document.querySelector("#request").value,
+    provider: document.querySelector("#provider").value,
+    base_url: document.querySelector("#base-url").value,
+    model: document.querySelector("#model").value,
+  };
+  if (validationExecutable) {
+    body.validation_commands = [{
+      kind: "test",
+      executable: validationExecutable,
+      args: validationArgs,
+    }];
+  }
   const response = await fetch("/tasks", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      repo_root: document.querySelector("#repo").value,
-      request: document.querySelector("#request").value,
-    }),
+    body: JSON.stringify(body),
   });
   const task = await response.json();
   status.textContent = JSON.stringify(task, null, 2);

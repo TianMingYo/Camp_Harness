@@ -181,6 +181,17 @@ class Store:
         payload = self._one("SELECT payload FROM approvals WHERE id=?", (approval_id,))
         return Approval.model_validate_json(payload) if payload else None
 
+    def list_approvals(self, task_id: str) -> list[Approval]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT approvals.payload FROM approvals "
+                "JOIN actions ON actions.id=approvals.action_id "
+                "JOIN iterations ON iterations.id=actions.iteration_id "
+                "WHERE iterations.task_id=? ORDER BY iterations.number, approvals.rowid",
+                (task_id,),
+            ).fetchall()
+        return [Approval.model_validate_json(row[0]) for row in rows]
+
     def append_audit_event(self, task_id: str, kind: str, payload: dict[str, Any]) -> None:
         with self._connect() as connection:
             connection.execute(

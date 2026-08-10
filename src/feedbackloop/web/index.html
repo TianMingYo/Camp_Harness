@@ -18,13 +18,20 @@
       </section>
       <section class="provider" aria-label="Provider credentials">
         <label>Provider <input id="provider" value="default"></label>
+        <label>Base URL <input id="base-url" value="https://api.openai.com/v1"></label>
+        <label>Model <input id="model"></label>
         <label>API key <input id="key" type="password" autocomplete="off"></label>
         <button id="save-key">Save key</button>
         <button id="clear-key">Clear key</button>
         <output id="credential-status"></output>
       </section>
+      <section class="validation" aria-label="Validation override">
+        <label>Validation executable <input id="validation-executable"></label>
+        <label>Validation arguments <input id="validation-args" value="[]"></label>
+      </section>
       <section class="timeline" aria-live="polite">
         <h2>Task status</h2>
+        <div id="pending-approvals"></div>
         <pre id="status">No task selected.</pre>
       </section>
     </main>

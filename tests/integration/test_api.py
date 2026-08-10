@@ -1,9 +1,11 @@
+from html.parser import HTMLParser
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 
 from feedbackloop.api import create_app
 from feedbackloop.credentials import CredentialService
+from feedbackloop.llm import LLMResponse, OpenAICompatibleClient
 from feedbackloop.store import Store
 from feedbackloop.models import ApprovalDecision, TaskState
 
@@ -115,3 +117,108 @@ def test_webui_root_is_accessible(tmp_path: Path):
     response = test_client.get("/")
     assert response.status_code == 200
     assert "Feedback Loop" in response.text
+
+
+def test_webui_exposes_local_provider_and_validation_configuration(tmp_path: Path):
+    class InputCollector(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.ids = set()
+
+        def handle_starttag(self, tag, attrs):
+            attributes = dict(attrs)
+            if attributes.get("id"):
+                self.ids.add(attributes["id"])
+
+    test_client, _ = client(tmp_path)
+    response = test_client.get("/")
+    parser = InputCollector()
+    parser.feed(response.text)
+
+    assert {
+        "provider",
+        "base-url",
+        "model",
+        "validation-executable",
+        "validation-args",
+        "pending-approvals",
+    } <= parser.ids
+
+
+def test_task_creation_uses_structured_validation_overrides(tmp_path: Path):
+    test_client, _ = client(tmp_path)
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    (repo / "pyproject.toml").write_text("[tool.pytest.ini_options]\n", encoding="utf-8")
+
+    created = test_client.post(
+        "/tasks",
+        json={
+            "repo_root": str(repo),
+            "request": "lint the project",
+            "validation_commands": [
+                {
+                    "kind": "lint",
+                    "executable": "python",
+                    "args": ["-m", "ruff", "check", "."],
+                }
+            ],
+        },
+    )
+
+    assert created.status_code == 201
+    assert created.json()["validation_commands"] == [
+        {
+            "kind": "lint",
+            "executable": "python",
+            "args": ["-m", "ruff", "check", "."],
+            "timeout_seconds": 120.0,
+            "auto_execute": True,
+        }
+    ]
+
+
+def test_default_local_app_builds_real_loop_from_task_provider_config(
+    tmp_path: Path, monkeypatch
+):
+    captured = {}
+
+    def complete(client, context):
+        captured.update(
+            provider=client.provider,
+            base_url=client.base_url,
+            model=client.model,
+            request=context.task_request,
+        )
+        return LLMResponse(actions=())
+
+    monkeypatch.setattr(OpenAICompatibleClient, "complete", complete)
+    store = Store(tmp_path / "local.sqlite3")
+    test_client = TestClient(
+        create_app(store=store, credentials=CredentialService(MemoryKeyring()))
+    )
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+
+    created = test_client.post(
+        "/tasks",
+        json={
+            "repo_root": str(repo),
+            "request": "add greeting",
+            "provider": "glm",
+            "base_url": "https://gateway.example/v1",
+            "model": "glm-5.2",
+        },
+    )
+    approved = test_client.post(f"/tasks/{created.json()['id']}/plan/approve")
+
+    assert approved.status_code == 202
+    assert captured == {
+        "provider": "glm",
+        "base_url": "https://gateway.example/v1",
+        "model": "glm-5.2",
+        "request": "add greeting",
+    }
+    assert test_client.get(f"/tasks/{created.json()['id']}").json()["task"]["state"] == (
+        "succeeded"
+    )

@@ -7,10 +7,20 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from feedbackloop.context import ContextBuilder, Plan
 from feedbackloop.credentials import CredentialService
-from feedbackloop.context import Plan
+from feedbackloop.executor import LocalExecutor, command_text
+from feedbackloop.feedback import FeedbackClassifier
+from feedbackloop.llm import OpenAICompatibleClient
 from feedbackloop.loop import FeedbackLoop
-from feedbackloop.models import ApprovalDecision, Task, TaskEvent, TaskState
+from feedbackloop.models import (
+    ApprovalDecision,
+    Task,
+    TaskEvent,
+    TaskState,
+    ValidationCommand,
+)
+from feedbackloop.policy import PolicyEngine
 from feedbackloop.state import TaskStateMachine
 from feedbackloop.store import Store
 from feedbackloop.workspace import InvalidRepositoryError, Workspace
@@ -21,6 +31,10 @@ class TaskCreateRequest(BaseModel):
     repo_root: str = Field(min_length=1)
     request: str = Field(min_length=1)
     max_iterations: int = Field(default=5, ge=1, le=100)
+    provider: str | None = None
+    base_url: str | None = None
+    model: str | None = None
+    validation_commands: tuple[ValidationCommand, ...] | None = None
 
 
 class CredentialRequest(BaseModel):
@@ -29,6 +43,47 @@ class CredentialRequest(BaseModel):
 
 class ApprovalRequest(BaseModel):
     decision: ApprovalDecision
+
+
+def build_local_loop(
+    task: Task, task_store: Store, credential_service: CredentialService
+) -> FeedbackLoop:
+    if not task.provider or not task.base_url or not task.model:
+        raise ValueError("provider, base_url and model are required for local execution")
+    workspace = Workspace(Path(task.repo_root))
+    executor = LocalExecutor(
+        workspace,
+        validation_commands=task.validation_commands,
+    )
+    return FeedbackLoop(
+        task_store=task_store,
+        llm=OpenAICompatibleClient(
+            base_url=task.base_url,
+            model=task.model,
+            provider=task.provider,
+            credential_provider=credential_service.build_provider(task.provider),
+        ),
+        policy=PolicyEngine(
+            declared_commands={command_text(item) for item in task.validation_commands}
+        ),
+        executor=executor,
+        classifier=FeedbackClassifier(),
+        context_builder=ContextBuilder(),
+        max_iterations=task.max_iterations,
+    )
+
+
+def _task_for_approval(task_store: Store, approval_id: str) -> Task | None:
+    approval = task_store.get_approval_by_id(approval_id)
+    if approval is None:
+        return None
+    action = task_store.get_action(approval.action_id)
+    if action is None or action.iteration_id is None:
+        return None
+    iteration = task_store.get_iteration(action.iteration_id)
+    if iteration is None:
+        return None
+    return task_store.get_task(iteration.task_id)
 
 
 def create_app(
@@ -61,10 +116,16 @@ def create_app(
             repo = Workspace(Path(request.repo_root)).resolve_repo()
         except InvalidRepositoryError as error:
             raise HTTPException(400, str(error)) from error
+        detected = ValidationDetector.detect(repo)
         task = Task.create(
             repo_root=str(repo),
             request=request.request,
-            validation_commands=tuple(ValidationDetector.detect(repo)),
+            provider=request.provider,
+            base_url=request.base_url,
+            model=request.model,
+            validation_commands=tuple(
+                ValidationDetector.apply_overrides(detected, request.validation_commands)
+            ),
             max_iterations=request.max_iterations,
         )
         task_store.create_task(task)
@@ -76,13 +137,17 @@ def create_app(
 
     @app.post("/tasks/{task_id}/plan/approve", status_code=status.HTTP_202_ACCEPTED)
     def approve_plan(task_id: str, background_tasks: BackgroundTasks):
-        if loop is None:
-            raise HTTPException(503, "loop service is not configured")
         try:
-            state = loop.approve_plan(task_id)
+            active_loop = loop
+            if active_loop is None:
+                task = task_store.get_task(task_id)
+                if task is None:
+                    raise KeyError(task_id)
+                active_loop = build_local_loop(task, task_store, credential_service)
+            state = active_loop.approve_plan(task_id)
         except (KeyError, ValueError) as error:
             raise HTTPException(400, str(error)) from error
-        background_tasks.add_task(loop.run, task_id)
+        background_tasks.add_task(active_loop.run, task_id)
         return {"task_id": task_id, "state": state.value}
 
     @app.get("/tasks/{task_id}")
@@ -95,16 +160,30 @@ def create_app(
             "task": task.model_dump(mode="json"),
             "plan": plan.model_dump(mode="json") if plan else None,
             "iterations": [item.model_dump(mode="json") for item in task_store.list_iterations(task_id)],
+            "approvals": [
+                item.model_dump(mode="json")
+                for item in task_store.list_approvals(task_id)
+            ],
         }
 
     @app.post("/approvals/{approval_id}")
-    def resolve_approval(approval_id: str, request: ApprovalRequest):
-        if loop is None:
-            raise HTTPException(503, "loop service is not configured")
+    def resolve_approval(
+        approval_id: str,
+        request: ApprovalRequest,
+        background_tasks: BackgroundTasks,
+    ):
         try:
-            state = loop.resolve_approval(approval_id, request.decision)
+            task = _task_for_approval(task_store, approval_id)
+            active_loop = loop
+            if active_loop is None:
+                if task is None:
+                    raise KeyError(approval_id)
+                active_loop = build_local_loop(task, task_store, credential_service)
+            state = active_loop.resolve_approval(approval_id, request.decision)
         except (KeyError, ValueError) as error:
             raise HTTPException(400, str(error)) from error
+        if state is TaskState.RUNNING and task is not None:
+            background_tasks.add_task(active_loop.run, task.id)
         return {"approval_id": approval_id, "state": state.value}
 
     @app.post("/providers/{provider}/credentials")
