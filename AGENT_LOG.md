@@ -56,6 +56,9 @@
 - **Task 7 continuation:** the controller implemented the core loop directly after the same agent
   dispatch limitation. Tests use a temporary repository, SQLite store, deterministic MockLLM, and
   fake executor; no real provider or shell command is used.
+- **Task 8 continuation:** FastAPI/Uvicorn were installed from official PyPI after the configured
+  mirror returned no packages. API tests use TestClient and memory credentials; no server or real
+  key is started during unit/integration verification.
 
 ## Workflow commitment
 

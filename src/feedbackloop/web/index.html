@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Feedback Loop</title>
+    <link rel="stylesheet" href="/web/styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar"><h1>Feedback Loop</h1><span id="mode">Local operator console</span></header>
+      <section class="toolbar" aria-label="Task controls">
+        <label>Repository <input id="repo" placeholder="C:\\repo"></label>
+        <label>Request <input id="request" placeholder="Describe a small feature"></label>
+        <button id="create">Create task</button>
+        <button id="approve" disabled>Approve plan</button>
+        <button id="demo">Load demo</button>
+      </section>
+      <section class="provider" aria-label="Provider credentials">
+        <label>Provider <input id="provider" value="default"></label>
+        <label>API key <input id="key" type="password" autocomplete="off"></label>
+        <button id="save-key">Save key</button>
+        <button id="clear-key">Clear key</button>
+        <output id="credential-status"></output>
+      </section>
+      <section class="timeline" aria-live="polite">
+        <h2>Task status</h2>
+        <pre id="status">No task selected.</pre>
+      </section>
+    </main>
+    <script src="/web/app.js"></script>
+  </body>
+</html>

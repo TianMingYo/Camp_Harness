@@ -1,0 +1,11 @@
+:root { color-scheme: light; font-family: system-ui, sans-serif; }
+body { margin: 0; background: #f4f6f8; color: #18212b; }
+.shell { max-width: 960px; margin: 0 auto; padding: 24px; }
+.topbar, .toolbar, .provider { display: flex; gap: 16px; align-items: end; flex-wrap: wrap; }
+.topbar { justify-content: space-between; border-bottom: 1px solid #c9d1d9; margin-bottom: 20px; }
+label { display: grid; gap: 6px; font-size: .9rem; }
+input { min-width: 260px; padding: 8px; border: 1px solid #aeb8c2; border-radius: 4px; }
+button { padding: 9px 14px; border: 0; border-radius: 4px; background: #185adb; color: white; cursor: pointer; }
+.provider { margin-top: 18px; border-top: 1px solid #d7dde3; padding-top: 18px; }
+.timeline { margin-top: 24px; background: white; border: 1px solid #d7dde3; border-radius: 4px; padding: 16px; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; }
