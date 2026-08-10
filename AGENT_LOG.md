@@ -33,6 +33,14 @@
 - **Revision:** SPEC and PLAN now explicitly define `VALIDATION_PASSED`, require `.git` markers for canonical workspaces, add command/network/Git-push actions, and make sensitive-file denial take precedence. The cold-start implementation remains isolated and is not part of the feature branch.
 - **Decision:** cold-start specification review is GO after the documented revisions. The inability to run Python in the unattended secondary CLI is a recorded execution-environment deviation; every primary implementation task must still capture real RED and GREEN test runs before its commit.
 
+## 2026-08-10 - Task 3 interface clarification
+
+- **Finding:** the plan referenced `CommandResult` in validation, feedback, and loop interfaces but
+  Task 1 had not assigned its ownership or fields.
+- **Revision:** Task 3 now explicitly extends `models.py` with immutable `CommandResult(kind,
+  exit_code, stdout, stderr, timed_out, duration_seconds, error)`; runner output is bounded before
+  classification or persistence.
+
 ## Workflow commitment
 
 The remaining Superpowers workflow is `writing-plans` → `using-git-worktrees` →

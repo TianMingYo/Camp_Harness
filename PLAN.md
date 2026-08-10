@@ -214,12 +214,16 @@ git commit -m "feat: enforce workspace boundaries and action policy"
 
 **Files:**
 - Create: `src/feedbackloop/validation.py`
+- Modify: `src/feedbackloop/models.py` to add the shared `CommandResult` record consumed by
+  feedback classification and the loop.
 - Test: `tests/unit/test_validation.py`, `tests/integration/test_command_runner.py`
 
 **Interfaces:**
 - `ValidationDetector.detect(repo_root: Path) -> list[ValidationCommand]`.
 - `ValidationDetector.apply_overrides(detected, overrides) -> list[ValidationCommand]`.
 - `CommandRunner.run(command: ValidationCommand, cwd: Path) -> CommandResult`.
+- `CommandResult(kind, exit_code, stdout, stderr, timed_out, duration_seconds, error)` is an
+  immutable serializable result; `stdout`/`stderr` are already bounded by the runner.
 
 - [ ] **Step 1: Write failing detection and execution tests**
 
