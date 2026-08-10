@@ -48,6 +48,9 @@
 - **Task 4 continuation:** the same collaboration dispatch limitation remained, so the controller
   performed Task 4 with two explicit RED/GREEN cycles, including a review-discovered policy
   priority test, before committing.
+- **Task 5 continuation:** the controller retained direct TDD execution because the agent gateway
+  remained unreliable. Provider tests use `httpx.MockTransport`; no real key or network request
+  was used.
 
 ## Workflow commitment
 
