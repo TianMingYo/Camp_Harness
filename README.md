@@ -19,7 +19,7 @@ python -m pytest -q
 python -m uvicorn feedbackloop.api:app --host 127.0.0.1 --port 8000
 ```
 
-打开 `http://127.0.0.1:8000`。本地模式接受一个规范化 Git 仓库路径，自动检测 Python、Node、Rust 验收命令，并允许在计划层覆盖。长任务由 API background task 启动，WebUI 轮询任务状态。
+打开 `http://127.0.0.1:8000`。本地模式接受一个规范化 Git 仓库路径，自动检测 Python、Node、Rust 验收命令，并允许用 executable 与 JSON 字符串参数数组覆盖。填写 provider、base URL、model，保存同名 provider 的 key，创建任务并确认计划后，长任务由 API background task 启动，WebUI 轮询任务状态。危险动作会显示 Allow/Deny，允许后执行并从下一迭代继续。
 
 ## Provider configuration
 
@@ -32,7 +32,7 @@ Content-Type: application/json
 {"key":"<hidden>"}
 ```
 
-响应只包含 `configured` 和指纹，不回显 key。当前适配器请求 JSON object 格式；不支持 `response_format` 的中转站需要在 provider adapter 中关闭该字段后再使用。
+响应只包含 `configured` 和指纹，不回显 key。当前适配器固定请求 JSON object 格式，因此供应商还必须支持 `response_format={"type":"json_object"}`。
 
 ## Safety limits
 
@@ -75,6 +75,7 @@ docker run --rm -p 8000:8000 feedbackloop-demo
 - CommandRunner 截断返回内容，但当前仍由 `communicate()` 暂存完整子进程输出。
 - 公网部署 URL 尚未配置；提交前必须完成 GitLab CI pass 和公开 WebUI 部署并在此处补充 URL。
 - `REFLECTION.md` 必须由学生本人完成，仓库仅提供问题模板。
+- 本地执行器支持仓库内读、写、已批准删除和已声明验收命令；network、Git push 与未声明命令仍会被策略拦截，当前版本不执行这些动作。
 
 ## Third-party dependencies
 

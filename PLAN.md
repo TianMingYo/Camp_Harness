@@ -38,6 +38,7 @@ Create the following focused units:
 - `src/feedbackloop/feedback.py`: result classification, log redaction/truncation, and no-progress detection.
 - `src/feedbackloop/llm.py`: provider protocol, OpenAI-compatible client, structured response parser, and deterministic mock client.
 - `src/feedbackloop/context.py`: bounded context construction from task, plan, recent feedback, and relevant file summaries.
+- `src/feedbackloop/executor.py`: bounded local file operations, validation execution, fingerprints, and sensitive-file-free summaries.
 - `src/feedbackloop/store.py`: SQLite repositories for task, iteration, action, approval, feedback, provider metadata, and audit events.
 - `src/feedbackloop/credentials.py`: keyring-backed set/get-status/update/clear service with a testable protocol.
 - `src/feedbackloop/loop.py`: the project-owned feedback loop orchestrator.
@@ -72,6 +73,9 @@ Create the following focused units:
 - Task 9: `2638e34` - offline demo, package metadata, Dockerfile, GitLab CI, README and reflection template.
 - Final integration fixes: `a32e4ec` makes created plans approvable and closes SQLite connections
   per operation; `db2e5ae` rejects all credential operations in public demo mode.
+- Local runtime completion: `00296ae` wires per-task OpenAI-compatible provider configuration,
+  structured validation overrides, the bounded local executor, actionable HITL decisions,
+  approval resume numbering, and deterministic provider-error failure feedback.
 
 Local implementation verification is green. Remaining external gates are Docker build/container
 smoke (Docker CLI unavailable), a passing remote GitLab pipeline, a public WebUI URL, and the

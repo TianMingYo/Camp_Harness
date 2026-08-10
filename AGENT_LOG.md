@@ -74,6 +74,32 @@
   found that public demo mode still accepted credential writes; a RED integration test reproduced
   it, and public-demo credential set/clear now return 403 while local mode remains enabled.
 
+## 2026-08-10 - Local runtime and HITL contract completion
+
+- **Root cause review:** the default local FastAPI app had no production composition root or local
+  executor, so plan approval returned 503 even though the README described real-provider local
+  execution. Validation override logic also existed only below the API boundary, and pending
+  approvals were not exposed to the WebUI.
+- **TDD evidence:** focused RED runs reproduced the missing `LocalExecutor`, local approval 503,
+  sensitive `.env` summary read, ignored validation overrides, absent provider/validation UI,
+  approved actions not executing, resumed iteration numbering collision, approval endpoints not
+  restarting work, missing pending-approval status, and uncaught provider failures. Each focused
+  test passed after its minimal implementation before the next behavior was started.
+- **Implementation:** commit `00296ae` adds a canonical-root `LocalExecutor`, per-task provider/base
+  URL/model configuration, structured validation overrides, local loop construction, provider
+  failure feedback, approval listing and UI decisions, approved action execution, and asynchronous
+  resume at the next persisted iteration number.
+- **Regression check:** the first complete run caught a misplaced function boundary that made
+  `build_local_loop` return `None`; the focused local-app test failed, the function boundary was
+  corrected, and the focused tests plus complete suite were rerun. Final pre-documentation result:
+  `99 passed, 1 skipped, 1 warning`.
+- **Safety evidence:** all provider tests monkeypatch or mock the external call, credential tests use
+  an in-memory keyring, sensitive summaries are excluded before file reads, and the real-secret scan
+  found no matching key patterns. No real provider key or network call was used during tests.
+- **Known boundary:** network, Git push, and undeclared command proposals remain policy-gated and are
+  not executed by the local executor. Docker, remote GitLab CI, public deployment, and the
+  student-written reflection remain external completion gates.
+
 ## Workflow commitment
 
 The remaining Superpowers workflow is `writing-plans` → `using-git-worktrees` →
