@@ -70,7 +70,8 @@ Create the following focused units:
 - Task 7: `ba3963d` - deterministic feedback-loop orchestrator.
 - Task 8: `3bad693` - FastAPI and operator WebUI.
 - Task 9: `2638e34` - offline demo, package metadata, Dockerfile, GitLab CI, README and reflection template.
-- Final integration fix: `a32e4ec` - created plans enter the approval state and SQLite connections close per operation.
+- Final integration fixes: `a32e4ec` makes created plans approvable and closes SQLite connections
+  per operation; `db2e5ae` rejects all credential operations in public demo mode.
 
 Local implementation verification is green. Remaining external gates are Docker build/container
 smoke (Docker CLI unavailable), a passing remote GitLab pipeline, a public WebUI URL, and the
