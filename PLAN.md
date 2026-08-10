@@ -58,6 +58,24 @@ Create the following focused units:
 
 `Task 0` is a mandatory pre-implementation gate. `Tasks 1–6` provide independent core units in sequence. `Task 7` integrates them. `Task 8` exposes the API and WebUI. `Task 9` adds the demo, packaging, CI, and documentation. A task may run in its own worktree only after its predecessors' public interfaces are committed.
 
+## Execution Status
+
+- Task 0: `e06eb2d` - Claude Code / GLM 5.2 cold-start findings recorded and documents revised.
+- Task 1: `66e85b5` - domain models and state machine.
+- Task 2: `ecefb8c` - workspace boundary and policy engine.
+- Task 3: `b9874d4` - validation detection and bounded runner.
+- Task 4: `1fe2a89` - feedback classification and progress detection.
+- Task 5: `17adba9` - structured provider adapter and bounded context.
+- Task 6: `bffe126` - SQLite audit store and keyring credentials.
+- Task 7: `ba3963d` - deterministic feedback-loop orchestrator.
+- Task 8: `3bad693` - FastAPI and operator WebUI.
+- Task 9: `2638e34` - offline demo, package metadata, Dockerfile, GitLab CI, README and reflection template.
+- Final integration fix: `a32e4ec` - created plans enter the approval state and SQLite connections close per operation.
+
+Local implementation verification is green. Remaining external gates are Docker build/container
+smoke (Docker CLI unavailable), a passing remote GitLab pipeline, a public WebUI URL, and the
+student-authored 1500-2500-character `REFLECTION.md`.
+
 ### Task 0: Cold-Start Specification Validation Gate
 
 **Files:**
