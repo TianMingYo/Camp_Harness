@@ -1,0 +1,1 @@
+"""Offline mechanism demonstration package."""

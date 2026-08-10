@@ -32,12 +32,19 @@ class Store:
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._connections: list[sqlite3.Connection] = []
         self._initialize()
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.path)
         connection.execute("PRAGMA foreign_keys = ON")
+        self._connections.append(connection)
         return connection
+
+    def close(self) -> None:
+        for connection in self._connections:
+            connection.close()
+        self._connections.clear()
 
     def _initialize(self) -> None:
         with self._connect() as connection:

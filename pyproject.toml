@@ -18,6 +18,12 @@ dependencies = [
 [project.optional-dependencies]
 test = ["pytest>=8,<9"]
 
+[project.scripts]
+feedbackloop-demo = "demo.scenario:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/feedbackloop", "demo"]
+
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 testpaths = ["tests"]

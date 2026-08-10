@@ -6,6 +6,9 @@ __pycache__/
 *.py[cod]
 *.sqlite3
 *.log
+.coverage
+htmlcov/
+.feedbackloop.sqlite3
 .env
 .env.*
 !.env.example

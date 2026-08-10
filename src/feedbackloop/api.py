@@ -128,3 +128,4 @@ def create_app(
 
 
 app = create_app(demo=False)
+demo_app = create_app(demo=True, public_demo=True)

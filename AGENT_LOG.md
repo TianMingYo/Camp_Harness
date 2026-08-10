@@ -59,6 +59,11 @@
 - **Task 8 continuation:** FastAPI/Uvicorn were installed from official PyPI after the configured
   mirror returned no packages. API tests use TestClient and memory credentials; no server or real
   key is started during unit/integration verification.
+- **Task 9 verification:** editable installation and both demo entry points passed. Docker CLI is
+  not installed, so image build/container smoke remain external gates. GitLab CI and a public WebUI
+  URL also require the student's remote repository/deployment credentials and are not fabricated.
+- **Academic boundary:** `REFLECTION.md` contains only the required question template because the
+  course explicitly requires the 1500-2500-character report to be written by the student.
 
 ## Workflow commitment
 
