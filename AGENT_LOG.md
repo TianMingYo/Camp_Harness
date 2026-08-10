@@ -64,6 +64,11 @@
   URL also require the student's remote repository/deployment credentials and are not fabricated.
 - **Academic boundary:** `REFLECTION.md` contains only the required question template because the
   course explicitly requires the 1500-2500-character report to be written by the student.
+- **Final contract review fix:** a real-loop API integration test found that task creation left the
+  state at `DRAFT`, making plan approval illegal. The API now transitions through `PLAN_READY` to
+  `AWAITING_PLAN_APPROVAL`; the focused test was RED before the fix and GREEN after it. SQLite
+  connections were also changed to operation-scoped close semantics after the demo exposed a
+  Windows file lock.
 
 ## Workflow commitment
 

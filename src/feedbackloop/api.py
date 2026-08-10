@@ -10,7 +10,8 @@ from pydantic import BaseModel, Field
 from feedbackloop.credentials import CredentialService
 from feedbackloop.context import Plan
 from feedbackloop.loop import FeedbackLoop
-from feedbackloop.models import ApprovalDecision, Task, TaskState
+from feedbackloop.models import ApprovalDecision, Task, TaskEvent, TaskState
+from feedbackloop.state import TaskStateMachine
 from feedbackloop.store import Store
 from feedbackloop.workspace import InvalidRepositoryError, Workspace
 from feedbackloop.validation import ValidationDetector
@@ -68,6 +69,9 @@ def create_app(
         )
         task_store.create_task(task)
         task_store.save_plan(task.id, Plan(summary=request.request))
+        state = TaskStateMachine(task.state).transition(TaskEvent.PLAN_READY)
+        task = task.model_copy(update={"state": state})
+        task_store.update_task(task)
         return task.model_dump(mode="json")
 
     @app.post("/tasks/{task_id}/plan/approve", status_code=status.HTTP_202_ACCEPTED)

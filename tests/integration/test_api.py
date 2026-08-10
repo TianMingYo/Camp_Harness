@@ -58,7 +58,7 @@ def test_task_create_approve_and_get_status(tmp_path: Path):
     created = test_client.post("/tasks", json={"repo_root": str(repo), "request": "add greeting"})
     assert created.status_code == 201
     task_id = created.json()["id"]
-    assert created.json()["state"] == "draft"
+    assert created.json()["state"] == "awaiting_plan_approval"
 
     approved = test_client.post(f"/tasks/{task_id}/plan/approve")
     assert approved.status_code == 202

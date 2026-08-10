@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from feedbackloop.context import Plan
 from feedbackloop.feedback import redact_and_truncate
@@ -32,19 +33,20 @@ class Store:
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._connections: list[sqlite3.Connection] = []
         self._initialize()
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
         connection = sqlite3.connect(self.path)
         connection.execute("PRAGMA foreign_keys = ON")
-        self._connections.append(connection)
-        return connection
+        try:
+            with connection:
+                yield connection
+        finally:
+            connection.close()
 
     def close(self) -> None:
-        for connection in self._connections:
-            connection.close()
-        self._connections.clear()
+        """Compatibility hook; operation-scoped connections are already closed."""
 
     def _initialize(self) -> None:
         with self._connect() as connection:
