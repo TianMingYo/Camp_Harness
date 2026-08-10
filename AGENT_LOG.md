@@ -40,6 +40,11 @@
 - **Revision:** Task 3 now explicitly extends `models.py` with immutable `CommandResult(kind,
   exit_code, stdout, stderr, timed_out, duration_seconds, error)`; runner output is bounded before
   classification or persistence.
+- **Execution deviation:** the collaboration dispatch channel and two fresh Claude Code/GLM 5.2
+  implementation prompts were unavailable/rejected by the gateway. The primary controller then
+  executed Task 3 TDD directly: RED was captured before implementation, GREEN and full regression
+  were captured after implementation, and this takeover is recorded rather than attributed to a
+  subagent.
 
 ## Workflow commitment
 

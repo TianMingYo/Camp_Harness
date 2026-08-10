@@ -99,6 +99,16 @@ class ValidationCommand(DomainModel):
     auto_execute: bool = True
 
 
+class CommandResult(DomainModel):
+    kind: str = Field(min_length=1)
+    exit_code: int | None = None
+    stdout: str = ""
+    stderr: str = ""
+    timed_out: bool = False
+    duration_seconds: float = Field(default=0, ge=0)
+    error: str | None = None
+
+
 class Task(DomainModel):
     id: str = Field(default_factory=_new_id)
     repo_root: str = Field(min_length=1)
