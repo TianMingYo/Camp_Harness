@@ -26,6 +26,13 @@ def test_new_task_starts_in_draft():
     assert task.validation_commands == ()
 
 
+def test_validation_command_rejects_unsupported_manual_execution_flag():
+    with pytest.raises(ValueError, match="auto_execute"):
+        ValidationCommand(
+            kind="test", executable="pytest", auto_execute=False
+        )
+
+
 def test_task_rejects_blank_request():
     with pytest.raises(ValidationError):
         Task.create(repo_root="/repo", request="   ")

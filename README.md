@@ -76,6 +76,7 @@ docker run --rm -p 8000:8000 feedbackloop-demo
 - 公网部署 URL 尚未配置；提交前必须完成 GitLab CI pass 和公开 WebUI 部署并在此处补充 URL。
 - `REFLECTION.md` 必须由学生本人完成，仓库仅提供问题模板。
 - 本地执行器支持仓库内读、写、已批准删除和已声明验收命令；network、Git push 与未声明命令仍会被策略拦截，当前版本不执行这些动作。
+- 本地创建任务时必须填写 provider、base URL、model、至少一条验收命令和明确的计划文件路径；应用不会把未列入计划的文件摘要发送给模型。
 
 ## Third-party dependencies
 

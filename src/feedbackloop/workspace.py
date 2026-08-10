@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
+import subprocess
 
 
 class WorkspaceError(ValueError):
@@ -26,9 +27,22 @@ class Workspace:
         if not root.is_dir():
             raise InvalidRepositoryError(f"repository root is not a directory: {root}")
 
-        git_marker = root / ".git"
-        if not (git_marker.is_dir() or git_marker.is_file()):
-            raise InvalidRepositoryError(f"Git repository marker not found: {root}")
+        try:
+            result = subprocess.run(
+                ["git", "-C", str(root), "rev-parse", "--show-toplevel"],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=10,
+            )
+        except (OSError, subprocess.SubprocessError) as error:
+            raise InvalidRepositoryError(f"valid Git repository not found: {root}") from error
+        top_level = Path(result.stdout.strip()).resolve()
+        if top_level != root:
+            raise InvalidRepositoryError(
+                f"workspace must be the canonical Git root: {top_level}"
+            )
         return root
 
     def resolve_child(self, candidate: str) -> Path:

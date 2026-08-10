@@ -149,6 +149,22 @@ class Store:
         payload = self._one("SELECT payload FROM actions WHERE id=?", (action_id,))
         return Action.model_validate_json(payload) if payload else None
 
+    def update_action(self, action: Action) -> None:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "UPDATE actions SET payload=? WHERE id=?", (_payload(action), action.id)
+            )
+            if cursor.rowcount != 1:
+                raise KeyError(action.id)
+
+    def list_actions(self, iteration_id: str) -> list[Action]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT payload FROM actions WHERE iteration_id=? ORDER BY rowid",
+                (iteration_id,),
+            ).fetchall()
+        return [Action.model_validate_json(row[0]) for row in rows]
+
     def save_feedback(self, feedback: Feedback) -> None:
         if feedback.iteration_id is None:
             raise ValueError("feedback requires iteration_id")
@@ -198,6 +214,14 @@ class Store:
                 "INSERT INTO audit_events(task_id,kind,payload) VALUES (?,?,?)",
                 (task_id, kind, _payload(payload)),
             )
+
+    def list_audit_events(self, task_id: str) -> list[dict[str, Any]]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT kind,payload FROM audit_events WHERE task_id=? ORDER BY id",
+                (task_id,),
+            ).fetchall()
+        return [{"kind": row[0], "payload": json.loads(row[1])} for row in rows]
 
     def _one(self, statement: str, parameters: tuple[Any, ...]) -> str | None:
         with self._connect() as connection:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, status
@@ -15,6 +16,7 @@ from feedbackloop.llm import OpenAICompatibleClient
 from feedbackloop.loop import FeedbackLoop
 from feedbackloop.models import (
     ApprovalDecision,
+    ActionType,
     Task,
     TaskEvent,
     TaskState,
@@ -35,6 +37,7 @@ class TaskCreateRequest(BaseModel):
     base_url: str | None = None
     model: str | None = None
     validation_commands: tuple[ValidationCommand, ...] | None = None
+    plan_files: tuple[str, ...] = ()
 
 
 class CredentialRequest(BaseModel):
@@ -50,10 +53,14 @@ def build_local_loop(
 ) -> FeedbackLoop:
     if not task.provider or not task.base_url or not task.model:
         raise ValueError("provider, base_url and model are required for local execution")
+    plan = task_store.get_plan(task.id)
+    if plan is None:
+        raise ValueError("task has no plan")
     workspace = Workspace(Path(task.repo_root))
     executor = LocalExecutor(
         workspace,
         validation_commands=task.validation_commands,
+        summary_paths=plan.files,
     )
     return FeedbackLoop(
         task_store=task_store,
@@ -64,7 +71,10 @@ def build_local_loop(
             credential_provider=credential_service.build_provider(task.provider),
         ),
         policy=PolicyEngine(
-            declared_commands={command_text(item) for item in task.validation_commands}
+            declared_commands={command_text(item) for item in task.validation_commands},
+            allowed_paths=plan.files,
+            unsupported_actions={ActionType.NETWORK, ActionType.GIT_PUSH},
+            undeclared_commands_require_approval=False,
         ),
         executor=executor,
         classifier=FeedbackClassifier(),
@@ -112,24 +122,41 @@ def create_app(
     def create_task(request: TaskCreateRequest):
         if public_demo and request.repo_root:
             raise HTTPException(400, "public demo does not accept local repository paths")
+        if not request.plan_files or "**" in request.plan_files:
+            raise HTTPException(400, "explicit plan file paths are required")
+        if loop is None and not (request.provider and request.base_url and request.model):
+            raise HTTPException(
+                400, "provider, base_url and model are required for local execution"
+            )
         try:
             repo = Workspace(Path(request.repo_root)).resolve_repo()
         except InvalidRepositoryError as error:
             raise HTTPException(400, str(error)) from error
         detected = ValidationDetector.detect(repo)
+        validation_commands = ValidationDetector.apply_overrides(
+            detected, request.validation_commands
+        )
+        if not validation_commands:
+            raise HTTPException(400, "at least one validation command is required")
         task = Task.create(
             repo_root=str(repo),
             request=request.request,
             provider=request.provider,
             base_url=request.base_url,
             model=request.model,
-            validation_commands=tuple(
-                ValidationDetector.apply_overrides(detected, request.validation_commands)
-            ),
+            validation_commands=tuple(validation_commands),
             max_iterations=request.max_iterations,
         )
         task_store.create_task(task)
-        task_store.save_plan(task.id, Plan(summary=request.request))
+        task_store.save_plan(
+            task.id,
+            Plan(
+                summary=request.request,
+                files=request.plan_files,
+                steps=(request.request,),
+                acceptance_criteria=tuple(command_text(item) for item in validation_commands),
+            ),
+        )
         state = TaskStateMachine(task.state).transition(TaskEvent.PLAN_READY)
         task = task.model_copy(update={"state": state})
         task_store.update_task(task)
@@ -137,6 +164,8 @@ def create_app(
 
     @app.post("/tasks/{task_id}/plan/approve", status_code=status.HTTP_202_ACCEPTED)
     def approve_plan(task_id: str, background_tasks: BackgroundTasks):
+        if public_demo:
+            raise HTTPException(404, "task execution is unavailable in public demo")
         try:
             active_loop = loop
             if active_loop is None:
@@ -152,6 +181,8 @@ def create_app(
 
     @app.get("/tasks/{task_id}")
     def get_task(task_id: str):
+        if public_demo:
+            raise HTTPException(404, "task access is unavailable in public demo")
         task = task_store.get_task(task_id)
         if task is None:
             raise HTTPException(404, "task not found")
@@ -161,7 +192,14 @@ def create_app(
             "plan": plan.model_dump(mode="json") if plan else None,
             "iterations": [item.model_dump(mode="json") for item in task_store.list_iterations(task_id)],
             "approvals": [
-                item.model_dump(mode="json")
+                {
+                    "approval": item.model_dump(mode="json"),
+                    "action": (
+                        action.model_dump(mode="json")
+                        if (action := task_store.get_action(item.action_id))
+                        else None
+                    ),
+                }
                 for item in task_store.list_approvals(task_id)
             ],
         }
@@ -172,6 +210,8 @@ def create_app(
         request: ApprovalRequest,
         background_tasks: BackgroundTasks,
     ):
+        if public_demo:
+            raise HTTPException(404, "approvals are unavailable in public demo")
         try:
             task = _task_for_approval(task_store, approval_id)
             active_loop = loop
@@ -191,6 +231,12 @@ def create_app(
         if public_demo:
             raise HTTPException(403, "public demo does not accept credentials")
         credential_service.set(provider, request.key)
+        return credential_service.status(provider).model_dump()
+
+    @app.get("/providers/{provider}/credentials")
+    def credential_status(provider: str):
+        if public_demo:
+            raise HTTPException(403, "public demo does not expose credentials")
         return credential_service.status(provider).model_dump()
 
     @app.delete("/providers/{provider}/credentials")
@@ -215,4 +261,8 @@ def create_app(
 
 
 app = create_app(demo=False)
-demo_app = create_app(demo=True, public_demo=True)
+demo_app = create_app(
+    store=Store(Path(tempfile.mkdtemp(prefix="feedbackloop-public-demo-")) / "demo.sqlite3"),
+    demo=True,
+    public_demo=True,
+)

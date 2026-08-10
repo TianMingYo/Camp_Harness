@@ -98,6 +98,12 @@ class ValidationCommand(DomainModel):
     timeout_seconds: float = Field(default=120, gt=0)
     auto_execute: bool = True
 
+    @model_validator(mode="after")
+    def require_supported_execution_mode(self) -> Self:
+        if not self.auto_execute:
+            raise ValueError("auto_execute=False is not supported")
+        return self
+
 
 class CommandResult(DomainModel):
     kind: str = Field(min_length=1)

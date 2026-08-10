@@ -76,8 +76,11 @@ Create the following focused units:
 - Local runtime completion: `00296ae` wires per-task OpenAI-compatible provider configuration,
   structured validation overrides, the bounded local executor, actionable HITL decisions,
   approval resume numbering, and deterministic provider-error failure feedback.
+- Review hardening: working tree changes after `58399a6` add real Git-root verification,
+  explicit plan-file/provider/validation gates, sensitive file-class exclusions, public-demo
+  task isolation, unsupported-action denial, credential status, action status, and audit events.
 
-Local implementation verification is green. Remaining external gates are Docker build/container
+Local implementation verification is green (`112 passed, 1 skipped`). Remaining external gates are Docker build/container
 smoke (Docker CLI unavailable), a passing remote GitLab pipeline, a public WebUI URL, and the
 student-authored 1500-2500-character `REFLECTION.md`.
 

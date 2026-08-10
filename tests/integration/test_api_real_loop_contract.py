@@ -13,6 +13,7 @@ from feedbackloop.models import Action, ApprovalDecision, CommandResult, Task, T
 from feedbackloop.policy import PolicyEngine
 from feedbackloop.store import Store
 from feedbackloop.workspace import Workspace
+from tests.helpers import init_git_repo
 
 
 class MemoryKeyring:
@@ -31,7 +32,7 @@ class Executor:
 
 def test_created_plan_can_be_approved_by_real_loop(tmp_path: Path):
     repo = tmp_path / "repo"
-    (repo / ".git").mkdir(parents=True)
+    init_git_repo(repo)
     store = Store(tmp_path / "tasks.sqlite3")
     loop = FeedbackLoop(
         task_store=store, llm=MockLLM([]), policy=PolicyEngine(),
@@ -41,7 +42,17 @@ def test_created_plan_can_be_approved_by_real_loop(tmp_path: Path):
     client = TestClient(create_app(
         store=store, loop=loop, credentials=CredentialService(MemoryKeyring())
     ))
-    task_id = client.post("/tasks", json={"repo_root": str(repo), "request": "feature"}).json()["id"]
+    task_id = client.post(
+        "/tasks",
+        json={
+            "repo_root": str(repo),
+            "request": "feature",
+            "plan_files": ["src/module.py"],
+            "validation_commands": [
+                {"kind": "test", "executable": "python", "args": ["-c", "pass"]}
+            ],
+        },
+    ).json()["id"]
 
     assert loop.approve_plan(task_id).value == "running"
 
@@ -67,7 +78,7 @@ class ResumableExecutor:
 
 def test_approval_endpoint_resumes_real_loop_in_background(tmp_path: Path):
     repo = tmp_path / "repo"
-    (repo / ".git").mkdir(parents=True)
+    init_git_repo(repo)
     (repo / "old.txt").write_text("obsolete", encoding="utf-8")
     store = Store(tmp_path / "tasks.sqlite3")
     task = Task.create(
@@ -103,14 +114,27 @@ def test_approval_endpoint_resumes_real_loop_in_background(tmp_path: Path):
         )
     )
     status = client.get(f"/tasks/{task.id}")
+    iteration_id = store.list_iterations(task.id)[0].id
 
     assert status.json()["approvals"] == [
         {
-            "id": paused.pending_approval.id,
-            "action_id": paused.pending_approval.action_id,
-            "reason": "file deletion requires approval",
-            "decision": "pending",
-            "decided_at": None,
+            "approval": {
+                "id": paused.pending_approval.id,
+                "action_id": paused.pending_approval.action_id,
+                "reason": "file deletion requires approval",
+                "decision": "pending",
+                "decided_at": None,
+                },
+            "action": {
+                "id": paused.pending_approval.action_id,
+                "iteration_id": iteration_id,
+                "type": "delete",
+                "path_or_command": "old.txt",
+                "content": None,
+                "risk": "normal",
+                "status": "proposed",
+                "result_summary": None,
+            },
         }
     ]
 

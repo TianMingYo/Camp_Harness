@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import tempfile
+import subprocess
 from collections import deque
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -27,7 +28,13 @@ class DemoResult:
 class _DemoExecutor:
     def __init__(self, root: Path):
         root.mkdir(parents=True, exist_ok=True)
-        (root / ".git").mkdir()
+        subprocess.run(
+            ["git", "init", "--quiet", str(root)],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
         self.workspace = Workspace(root)
         self._results = deque(
             [

@@ -14,20 +14,32 @@ def command_text(command: ValidationCommand) -> str:
 
 def _is_sensitive(relative: Path) -> bool:
     sensitive_names = {
+        ".aws",
+        ".dockerconfigjson",
+        ".npmrc",
+        ".pypirc",
         ".netrc",
         "credentials",
+        "credentials.json",
+        "secrets.json",
+        "secrets.yaml",
+        "secrets.yml",
         "id_dsa",
         "id_ecdsa",
         "id_ed25519",
         "id_rsa",
     }
-    return any(
-        part.casefold() == ".git"
-        or part.casefold() == ".env"
-        or part.casefold().startswith(".env.")
-        or part.casefold() in sensitive_names
-        for part in relative.parts
-    )
+    for part in relative.parts:
+        lowered = part.casefold()
+        if (
+            lowered == ".git"
+            or lowered == ".env"
+            or lowered.startswith(".env.")
+            or lowered in sensitive_names
+            or lowered.endswith((".pem", ".key", ".p12", ".pfx", ".jks", ".keystore"))
+        ):
+            return True
+    return False
 
 
 class LocalExecutor:
@@ -36,12 +48,14 @@ class LocalExecutor:
         workspace: Workspace,
         *,
         validation_commands: tuple[ValidationCommand, ...] = (),
+        summary_paths: tuple[str, ...] = (),
         runner: CommandRunner | None = None,
         max_file_summary_chars: int = 4_000,
     ) -> None:
         self.workspace = workspace
         self.runner = runner or CommandRunner()
         self.max_file_summary_chars = max_file_summary_chars
+        self.summary_paths = tuple(summary_paths)
         self._declared_commands = {
             command_text(command): command for command in validation_commands
         }
@@ -77,15 +91,21 @@ class LocalExecutor:
     def file_summaries(self) -> list[FileSummary]:
         root = self.workspace.resolve_repo()
         summaries: list[FileSummary] = []
-        for path in sorted(root.rglob("*")):
-            relative = path.relative_to(root)
-            if not path.is_file() or _is_sensitive(relative):
+        for relative_text in self.summary_paths:
+            if relative_text in {"", "**"}:
+                continue
+            relative = Path(relative_text)
+            if _is_sensitive(relative):
                 continue
             try:
                 resolved = self.workspace.resolve_child(relative.as_posix())
             except WorkspaceError:
                 continue
-            content = resolved.read_text(encoding="utf-8", errors="replace")
+            if not resolved.is_file():
+                continue
+            with resolved.open("rb") as source:
+                raw = source.read(self.max_file_summary_chars * 4)
+            content = raw.decode("utf-8", errors="replace")
             summaries.append(
                 FileSummary(
                     path=relative.as_posix(),

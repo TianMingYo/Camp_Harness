@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from feedbackloop.context import Plan
-from feedbackloop.models import Feedback, FeedbackKind, IterationRecord, Task
+from feedbackloop.models import Action, ActionStatus, Feedback, FeedbackKind, IterationRecord, Task
 from feedbackloop.store import Store
 
 
@@ -74,3 +74,22 @@ def test_iteration_number_is_unique_per_task(tmp_path: Path):
     duplicate = iteration(created.id).model_copy(update={"id": "iteration-2"})
     with pytest.raises(sqlite3.IntegrityError):
         store.save_iteration(duplicate)
+
+
+def test_store_updates_action_status_and_lists_redacted_audit_events(tmp_path: Path):
+    store = Store(tmp_path / "tasks.sqlite3")
+    created = task()
+    store.create_task(created)
+    store.save_iteration(iteration(created.id))
+    action = Action.write("src/module.py", "value = 1\n").model_copy(
+        update={"iteration_id": "iteration-1"}
+    )
+    store.save_action(action)
+
+    store.update_action(action.model_copy(update={"status": ActionStatus.COMPLETED}))
+    store.append_audit_event(created.id, "action_completed", {"action_id": action.id})
+
+    assert store.get_action(action.id).status is ActionStatus.COMPLETED
+    assert store.list_audit_events(created.id) == [
+        {"kind": "action_completed", "payload": {"action_id": action.id}}
+    ]

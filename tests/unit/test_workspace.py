@@ -1,4 +1,5 @@
 from pathlib import Path
+import subprocess
 
 import pytest
 
@@ -9,22 +10,28 @@ from feedbackloop.workspace import (
 )
 
 
-def git_workspace(root: Path, *, worktree_marker: bool = False) -> Workspace:
-    marker = root / ".git"
-    if worktree_marker:
-        marker.write_text("gitdir: ../metadata\n", encoding="utf-8")
-    else:
-        marker.mkdir()
+def git_workspace(root: Path) -> Workspace:
+    subprocess.run(
+        ["git", "init", "--quiet", str(root)],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
     return Workspace(root)
 
 
-@pytest.mark.parametrize("worktree_marker", [False, True])
-def test_resolve_repo_accepts_git_directory_or_worktree_file(
-    tmp_path: Path, worktree_marker: bool
-) -> None:
-    workspace = git_workspace(tmp_path, worktree_marker=worktree_marker)
+def test_resolve_repo_accepts_actual_git_root(tmp_path: Path) -> None:
+    workspace = git_workspace(tmp_path)
 
     assert workspace.resolve_repo() == tmp_path.resolve()
+
+
+def test_resolve_repo_rejects_fabricated_git_marker(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+
+    with pytest.raises(InvalidRepositoryError, match="Git"):
+        Workspace(tmp_path).resolve_repo()
 
 
 def test_resolve_repo_rejects_directory_without_git_marker(tmp_path: Path) -> None:

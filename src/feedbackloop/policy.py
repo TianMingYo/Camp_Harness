@@ -26,10 +26,23 @@ class PolicyDecision:
 
 
 class PolicyEngine:
-    def __init__(self, declared_commands: Iterable[str] = ()) -> None:
+    def __init__(
+        self,
+        declared_commands: Iterable[str] = (),
+        allowed_paths: Iterable[str] = (),
+        unsupported_actions: Iterable[ActionType] = (),
+        undeclared_commands_require_approval: bool = True,
+    ) -> None:
         self._declared_commands = frozenset(declared_commands)
+        self._allowed_paths = frozenset(allowed_paths)
+        self._unsupported_actions = frozenset(unsupported_actions)
+        self._undeclared_commands_require_approval = undeclared_commands_require_approval
 
     def check(self, action: Action, workspace: Workspace) -> PolicyDecision:
+        if action.type in self._unsupported_actions:
+            return PolicyDecision(
+                DecisionKind.DENY, "action is not supported by the configured executor"
+            )
         if action.type in {ActionType.READ, ActionType.WRITE, ActionType.DELETE}:
             return self._check_file_action(action, workspace)
         if action.type is ActionType.NETWORK:
@@ -59,6 +72,10 @@ class PolicyEngine:
             return PolicyDecision(
                 DecisionKind.DENY, "access to sensitive files is denied"
             )
+        if self._allowed_paths and not _in_plan_scope(relative, self._allowed_paths):
+            return PolicyDecision(
+                DecisionKind.DENY, "file action is outside the approved plan scope"
+            )
         if action.type is ActionType.DELETE:
             return PolicyDecision(
                 DecisionKind.REQUIRE_APPROVAL, "file deletion requires approval"
@@ -79,6 +96,10 @@ class PolicyEngine:
                 DecisionKind.REQUIRE_APPROVAL, "shell chaining requires approval"
             )
         if command not in self._declared_commands:
+            if not self._undeclared_commands_require_approval:
+                return PolicyDecision(
+                    DecisionKind.DENY, "undeclared command is not supported"
+                )
             return PolicyDecision(
                 DecisionKind.REQUIRE_APPROVAL, "undeclared command requires approval"
             )
@@ -111,3 +132,7 @@ def _is_sensitive(relative: Path) -> bool:
 
 def _contains_shell_chaining(command: str) -> bool:
     return any(token in command for token in ("&", "|", ";", "\n", "\r"))
+
+
+def _in_plan_scope(relative: Path, allowed_paths: frozenset[str]) -> bool:
+    return "**" in allowed_paths or relative.as_posix() in allowed_paths

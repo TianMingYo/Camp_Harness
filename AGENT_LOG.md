@@ -100,6 +100,28 @@
   not executed by the local executor. Docker, remote GitLab CI, public deployment, and the
   student-written reflection remain external completion gates.
 
+## 2026-08-11 - Independent review hardening
+
+- **Review source:** an independent read-only Superpowers code review of `4c5f69f..58399a6`
+  reported critical gaps around eager repository context reads, opaque approval scope, empty
+  validation success, public-demo data isolation, unsupported approved actions, uncaught executor
+  failures, audit status, `auto_execute`, and fabricated Git markers.
+- **Verification:** each accepted issue was checked against the current code and converted into a
+  focused RED test before production edits. The plan now requires explicit repository-relative
+  file paths, local provider configuration, and at least one validation command; `Workspace` asks
+  Git for the canonical top-level; summaries read only explicit non-secret files; public demo uses
+  isolated storage and exposes no task/approval execution routes; unsupported local actions are
+  denied; executor/provider failures become persisted `COMMAND_ERROR` and `FAILED`; action status,
+  approval decisions, and redacted audit events are queryable; `auto_execute=False` is rejected.
+- **TDD process deviation:** one initial patch accidentally included production edits with the new
+  tests. The edits were immediately reverted before the focused test run; the same behavior was
+  then reintroduced only after observing the expected RED failures. No implementation commit was
+  made from the premature patch.
+- **Verification result:** focused hardening tests and the complete suite pass with `112 passed,
+  1 skipped, 1 warning`; both offline demo entry points, compileall, diff check, and secret scan
+  also pass. The symlink test skip remains Windows privilege-related. Docker, remote CI, public URL,
+  and student reflection remain external gates.
+
 ## Workflow commitment
 
 The remaining Superpowers workflow is `writing-plans` → `using-git-worktrees` →

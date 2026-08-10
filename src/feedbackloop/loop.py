@@ -8,6 +8,7 @@ from feedbackloop.feedback import FeedbackClassifier
 from feedbackloop.llm import LLMClient, LLMProviderError
 from feedbackloop.models import (
     Action,
+    ActionStatus,
     Approval,
     ApprovalDecision,
     CommandResult,
@@ -88,13 +89,18 @@ class FeedbackLoop:
         limit = min(task.max_iterations, self.max_iterations)
 
         for number in range(len(existing_iterations) + 1, limit + 1):
-            before = self.executor.fingerprint()
-            context = self.context_builder.build(
-                task,
-                plan,
-                self.store.list_iterations(task_id),
-                self.executor.file_summaries(),
-            )
+            try:
+                before = self.executor.fingerprint()
+                context = self.context_builder.build(
+                    task,
+                    plan,
+                    self.store.list_iterations(task_id),
+                    self.executor.file_summaries(),
+                )
+            except Exception as error:
+                return self._runtime_failure(
+                    task, machine, number, "unavailable", error
+                )
             try:
                 response = self.llm.complete(context)
             except LLMProviderError as error:
@@ -112,7 +118,10 @@ class FeedbackLoop:
             prepared_actions: list[Action] = []
 
             for proposed in response.actions:
-                decision = self.policy.check(proposed, self.executor.workspace)
+                try:
+                    decision = self.policy.check(proposed, self.executor.workspace)
+                except Exception as error:
+                    return self._runtime_failure(task, machine, number, before, error)
                 if decision.kind is DecisionKind.DENY:
                     feedback = Feedback(
                         iteration_id=None,
@@ -144,11 +153,22 @@ class FeedbackLoop:
                     return self._result(task_id, state, approval)
                 prepared_actions.append(action)
 
-            for action in prepared_actions:
-                self.executor.apply(action)
+            completed_actions: list[Action] = []
+            try:
+                for action in prepared_actions:
+                    self.executor.apply(action)
+                    completed_actions.append(
+                        action.model_copy(update={"status": ActionStatus.COMPLETED})
+                    )
+            except Exception as error:
+                return self._runtime_failure(task, machine, number, before, error)
+            prepared_actions = completed_actions
 
-            after = self.executor.fingerprint()
-            command_result = self._validate(task.validation_commands)
+            try:
+                after = self.executor.fingerprint()
+                command_result = self._validate(task.validation_commands)
+            except Exception as error:
+                return self._runtime_failure(task, machine, number, before, error)
             feedback = self.classifier.classify(command_result, before, after)
             record = self._record(task_id, number, after, feedback)
             feedback = feedback.model_copy(update={"iteration_id": record.id})
@@ -174,7 +194,7 @@ class FeedbackLoop:
                 state = machine.transition(TaskEvent.NO_PROGRESS)
                 self._update_state(task, state)
                 return self._result(task_id, state)
-            if feedback.kind is FeedbackKind.TIMEOUT:
+            if feedback.kind in {FeedbackKind.TIMEOUT, FeedbackKind.COMMAND_ERROR}:
                 state = machine.transition(TaskEvent.FAIL)
                 self._update_state(task, state)
                 return self._result(task_id, state)
@@ -209,16 +229,36 @@ class FeedbackLoop:
         if decision is ApprovalDecision.ALLOWED:
             try:
                 self.executor.apply(action)
+                self.store.update_action(
+                    action.model_copy(update={"status": ActionStatus.COMPLETED})
+                )
+                self.store.append_audit_event(
+                    task.id,
+                    "approval_allowed",
+                    {"approval_id": approval.id, "action_id": action.id},
+                )
             except (OSError, RuntimeError, ValueError) as error:
                 failed = TaskStateMachine(state).transition(TaskEvent.FAIL)
                 self._update_state(task, failed)
                 raise ValueError("approved action execution failed") from error
+        else:
+            self.store.update_action(
+                action.model_copy(update={"status": ActionStatus.DENIED})
+            )
+            self.store.append_audit_event(
+                task.id,
+                "approval_denied",
+                {"approval_id": approval.id, "action_id": action.id},
+            )
         self._update_state(task, state)
         return state
 
     def _validate(self, commands: tuple[ValidationCommand, ...]) -> CommandResult:
         if not commands:
-            return CommandResult(kind="test", exit_code=0)
+            return CommandResult(
+                kind="validation",
+                error="no validation command is configured",
+            )
         result: CommandResult | None = None
         for command in commands:
             result = self.executor.validate(command)
@@ -250,6 +290,26 @@ class FeedbackLoop:
         for action in actions:
             self.store.save_action(action)
         self.store.save_feedback(feedback)
+
+    def _runtime_failure(
+        self,
+        task: Task,
+        machine: TaskStateMachine,
+        number: int,
+        fingerprint: str,
+        error: Exception,
+    ) -> TaskResult:
+        feedback = Feedback(
+            kind=FeedbackKind.COMMAND_ERROR,
+            summary=str(error) or type(error).__name__,
+        )
+        record = self._record(task.id, number, fingerprint, feedback)
+        feedback = feedback.model_copy(update={"iteration_id": record.id})
+        record = record.model_copy(update={"feedback": feedback})
+        self._persist_iteration(record, feedback, [])
+        state = machine.transition(TaskEvent.FAIL)
+        self._update_state(task, state)
+        return self._result(task.id, state)
 
     def _task(self, task_id: str) -> Task:
         task = self.store.get_task(task_id)

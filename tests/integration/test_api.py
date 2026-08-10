@@ -8,6 +8,8 @@ from feedbackloop.credentials import CredentialService
 from feedbackloop.llm import LLMResponse, OpenAICompatibleClient
 from feedbackloop.store import Store
 from feedbackloop.models import ApprovalDecision, TaskState
+from feedbackloop.models import Task
+from tests.helpers import init_git_repo
 
 
 class MemoryKeyring:
@@ -55,9 +57,16 @@ def client(tmp_path: Path, *, public_demo: bool = False):
 def test_task_create_approve_and_get_status(tmp_path: Path):
     test_client, _ = client(tmp_path)
     repo = tmp_path / "repo"
-    (repo / ".git").mkdir(parents=True)
+    init_git_repo(repo)
     (repo / "pyproject.toml").write_text("[tool.pytest.ini_options]\n", encoding="utf-8")
-    created = test_client.post("/tasks", json={"repo_root": str(repo), "request": "add greeting"})
+    created = test_client.post(
+        "/tasks",
+        json={
+            "repo_root": str(repo),
+            "request": "add greeting",
+            "plan_files": ["src/greeting.py"],
+        },
+    )
     assert created.status_code == 201
     task_id = created.json()["id"]
     assert created.json()["state"] == "awaiting_plan_approval"
@@ -69,6 +78,8 @@ def test_task_create_approve_and_get_status(tmp_path: Path):
     assert status.status_code == 200
     assert status.json()["task"]["id"] == task_id
     assert status.json()["plan"]["summary"] == "add greeting"
+    assert status.json()["plan"]["files"] == ["src/greeting.py"]
+    assert status.json()["plan"]["steps"] == ["add greeting"]
     assert status.json()["task"]["validation_commands"][0]["kind"] == "test"
 
 
@@ -86,6 +97,15 @@ def test_credentials_never_echo_key_and_demo_is_available(tmp_path: Path):
     cleared = test_client.delete("/providers/demo/credentials")
     assert cleared.status_code == 200
     assert cleared.json()["configured"] is False
+
+
+def test_credential_status_is_readable_without_exposing_key(tmp_path: Path):
+    test_client, _ = client(tmp_path)
+    response = test_client.get("/providers/demo/credentials")
+
+    assert response.status_code == 200
+    assert response.json()["configured"] is False
+    assert "key" not in response.text.lower()
 
 
 def test_approval_endpoint_delegates_decision(tmp_path: Path):
@@ -110,6 +130,29 @@ def test_public_demo_rejects_credentials(tmp_path: Path):
     )
     assert response.status_code == 403
     assert "must-not-be-stored" not in response.text
+
+
+def test_public_demo_cannot_read_or_execute_seeded_local_tasks(tmp_path: Path):
+    store = Store(tmp_path / "shared.sqlite3")
+    repo = tmp_path / "repo"
+    init_git_repo(repo)
+    task = Task.create(repo_root=str(repo), request="private task")
+    store.create_task(task)
+    test_client = TestClient(
+        create_app(
+            store=store,
+            loop=StubLoop(),
+            credentials=CredentialService(MemoryKeyring()),
+            demo=True,
+            public_demo=True,
+        )
+    )
+
+    assert test_client.get(f"/tasks/{task.id}").status_code == 404
+    assert test_client.post(f"/tasks/{task.id}/plan/approve").status_code == 404
+    assert test_client.post(
+        "/approvals/private", json={"decision": "allowed"}
+    ).status_code == 404
 
 
 def test_webui_root_is_accessible(tmp_path: Path):
@@ -148,7 +191,7 @@ def test_webui_exposes_local_provider_and_validation_configuration(tmp_path: Pat
 def test_task_creation_uses_structured_validation_overrides(tmp_path: Path):
     test_client, _ = client(tmp_path)
     repo = tmp_path / "repo"
-    (repo / ".git").mkdir(parents=True)
+    init_git_repo(repo)
     (repo / "pyproject.toml").write_text("[tool.pytest.ini_options]\n", encoding="utf-8")
 
     created = test_client.post(
@@ -156,6 +199,7 @@ def test_task_creation_uses_structured_validation_overrides(tmp_path: Path):
         json={
             "repo_root": str(repo),
             "request": "lint the project",
+            "plan_files": ["src/module.py"],
             "validation_commands": [
                 {
                     "kind": "lint",
@@ -178,6 +222,67 @@ def test_task_creation_uses_structured_validation_overrides(tmp_path: Path):
     ]
 
 
+def test_task_creation_rejects_empty_validation_set(tmp_path: Path):
+    test_client, _ = client(tmp_path)
+    repo = tmp_path / "repo"
+    init_git_repo(repo)
+
+    created = test_client.post(
+        "/tasks",
+        json={
+            "repo_root": str(repo),
+            "request": "change code",
+            "plan_files": ["src/module.py"],
+        },
+    )
+
+    assert created.status_code == 400
+    assert "validation" in created.text.lower()
+
+
+def test_task_creation_rejects_wildcard_or_empty_plan_scope(tmp_path: Path):
+    test_client, _ = client(tmp_path)
+    repo = tmp_path / "repo"
+    init_git_repo(repo)
+    (repo / "pyproject.toml").write_text("[tool.pytest.ini_options]\n", encoding="utf-8")
+
+    for plan_files in ([], ["**"]):
+        created = test_client.post(
+            "/tasks",
+            json={
+                "repo_root": str(repo),
+                "request": "change code",
+                "plan_files": plan_files,
+            },
+        )
+        assert created.status_code == 400
+        assert "plan" in created.text.lower()
+
+
+def test_default_local_app_requires_complete_provider_configuration(tmp_path: Path):
+    store = Store(tmp_path / "local.sqlite3")
+    test_client = TestClient(
+        create_app(store=store, credentials=CredentialService(MemoryKeyring()))
+    )
+    repo = tmp_path / "repo"
+    init_git_repo(repo)
+
+    created = test_client.post(
+        "/tasks",
+        json={
+            "repo_root": str(repo),
+            "request": "change code",
+            "plan_files": ["src/module.py"],
+            "validation_commands": [
+                {"kind": "test", "executable": "python", "args": ["-c", "pass"]}
+            ],
+        },
+    )
+
+    assert created.status_code == 400
+    assert "provider" in created.text.lower()
+
+
 def test_default_local_app_builds_real_loop_from_task_provider_config(
     tmp_path: Path, monkeypatch
 ):
@@ -198,7 +303,7 @@ def test_default_local_app_builds_real_loop_from_task_provider_config(
         create_app(store=store, credentials=CredentialService(MemoryKeyring()))
     )
     repo = tmp_path / "repo"
-    (repo / ".git").mkdir(parents=True)
+    init_git_repo(repo)
 
     created = test_client.post(
         "/tasks",
@@ -208,6 +313,10 @@ def test_default_local_app_builds_real_loop_from_task_provider_config(
             "provider": "glm",
             "base_url": "https://gateway.example/v1",
             "model": "glm-5.2",
+            "plan_files": ["src/greeting.py"],
+            "validation_commands": [
+                {"kind": "test", "executable": "python", "args": ["-c", "pass"]}
+            ],
         },
     )
     approved = test_client.post(f"/tasks/{created.json()['id']}/plan/approve")
