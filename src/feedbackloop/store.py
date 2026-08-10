@@ -87,6 +87,14 @@ class Store:
         with self._connect() as connection:
             connection.execute("INSERT INTO tasks(id,payload) VALUES (?,?)", (task.id, _payload(task)))
 
+    def update_task(self, task: Task) -> None:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "UPDATE tasks SET payload=? WHERE id=?", (_payload(task), task.id)
+            )
+            if cursor.rowcount != 1:
+                raise KeyError(task.id)
+
     def get_task(self, task_id: str) -> Task | None:
         payload = self._one("SELECT payload FROM tasks WHERE id=?", (task_id,))
         return Task.model_validate_json(payload) if payload else None
@@ -151,12 +159,17 @@ class Store:
     def save_approval(self, approval: Approval) -> None:
         with self._connect() as connection:
             connection.execute(
-                "INSERT INTO approvals(id,action_id,payload) VALUES (?,?,?)",
+                "INSERT INTO approvals(id,action_id,payload) VALUES (?,?,?) "
+                "ON CONFLICT(id) DO UPDATE SET payload=excluded.payload",
                 (approval.id, approval.action_id, _payload(approval)),
             )
 
     def get_approval(self, action_id: str) -> Approval | None:
         payload = self._one("SELECT payload FROM approvals WHERE action_id=?", (action_id,))
+        return Approval.model_validate_json(payload) if payload else None
+
+    def get_approval_by_id(self, approval_id: str) -> Approval | None:
+        payload = self._one("SELECT payload FROM approvals WHERE id=?", (approval_id,))
         return Approval.model_validate_json(payload) if payload else None
 
     def append_audit_event(self, task_id: str, kind: str, payload: dict[str, Any]) -> None:
