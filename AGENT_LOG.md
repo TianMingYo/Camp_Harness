@@ -51,6 +51,8 @@
 - **Task 5 continuation:** the controller retained direct TDD execution because the agent gateway
   remained unreliable. Provider tests use `httpx.MockTransport`; no real key or network request
   was used.
+- **Task 6 continuation:** direct TDD used an isolated SQLite database and injected memory keyring;
+  the system keyring adapter was not invoked during tests.
 
 ## Workflow commitment
 
