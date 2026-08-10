@@ -45,6 +45,9 @@
   executed Task 3 TDD directly: RED was captured before implementation, GREEN and full regression
   were captured after implementation, and this takeover is recorded rather than attributed to a
   subagent.
+- **Task 4 continuation:** the same collaboration dispatch limitation remained, so the controller
+  performed Task 4 with two explicit RED/GREEN cycles, including a review-discovered policy
+  priority test, before committing.
 
 ## Workflow commitment
 
