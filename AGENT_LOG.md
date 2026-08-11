@@ -224,3 +224,16 @@ impact, human intervention and verification evidence.
 - **Restored GREEN command:** `C:\Users\13900\anaconda3\python.exe -m pytest tests/demo/test_github_delivery.py -q`
 - **Restored GREEN result:** `1 passed in 0.05s`.
 - **Strengthened contract:** the test now requires workflow name `CI`, exactly the `push` and `pull_request` triggers, exactly one `quality` job on `ubuntu-latest`, and the six exact ordered step mappings from checkout through Docker build.
+
+## 2026-08-11 - GitHub Pull Request delivery
+
+- **Approved target:** `https://github.com/TianMingYo/Camp_Harness.git`; feature branch `feature/feedback-loop-harness`; base branch `main`; no merge or force push.
+- **Unexpected external state:** `git ls-remote` succeeded but returned no refs because the target repository was empty. The implementation plan assumed an existing `main` branch.
+- **Plan deviation:** after verifying `main` (`951d4bb`) was the exact merge base and ancestor of the feature head, the controller published `main:main` with a normal non-force push. This created only the required PR baseline and did not switch, edit, stage, or commit the dirty main worktree.
+- **Default-branch correction:** GitHub initially selected the first-pushed feature branch as the repository default. After `main` existed, the controller changed the remote default branch to `main` through the GitHub REST API so the repository and PR use the intended baseline.
+- **PR-tool deviation:** GitHub CLI was unavailable. Instead of stopping at the documented compare-URL fallback, the controller used the existing Git credential through the GitHub REST API to satisfy the course's hard requirement for an actual PR. Credential values were held in memory and were never printed, persisted, or added to the repository.
+- **Human approval:** managed approvals were obtained separately for adding `origin`, pushing the feature branch, publishing `main`, changing the default branch, and creating the PR.
+- **Pull Request:** `https://github.com/TianMingYo/Camp_Harness/pull/1`, title `Build deterministic coding-agent feedback harness`, state `open`, base `main`, head `feature/feedback-loop-harness`; the controller did not merge it.
+- **Initial remote verification:** GitHub Actions pull-request run `31474098931` and push run `31471299922` both completed with conclusion `success`; the PR reported mergeable state `clean` at head `dff22bd`.
+- **TDD applicability:** Task 2 changed remote Git metadata and this audit document only; it introduced no product behavior or implementation code, so no additional RED/GREEN product test was applicable. The previously TDD-developed workflow contract and complete local suite remained the delivery gate.
+- **Remaining external gates:** a public WebUI deployment URL and the student's own `REFLECTION.md` are still required by the course and are not fabricated by the agent.
