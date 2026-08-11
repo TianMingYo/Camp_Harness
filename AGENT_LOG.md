@@ -214,3 +214,13 @@ impact, human intervention and verification evidence.
 - **Ruff command/result:** `ruff check src tests demo` -> `All checks passed!`
 - **Demo command/result:** `C:\Users\13900\anaconda3\python.exe -m demo.scenario` -> `"corrected_after_feedback": true`, `"policy_blocked": true`, `"used_network": false`, `"final_state": "succeeded"`.
 - **Diff command/result:** `git diff --check` exited `0`; Git emitted only the working-copy LF-to-CRLF notice for `pyproject.toml`.
+
+## 2026-08-11 - GitHub Actions contract review fix
+
+- **Review finding:** the original test concatenated all `run` values and checked substrings, so one echo-only step containing those strings could pass without executing checkout, Python setup, tests, the demo, or the image build.
+- **Controlled mutation:** after strengthening the test, `.github/workflows/ci.yml` was temporarily changed to one folded `run` step: `echo python -m pip install ".[test]" python -m pytest -q python -m demo.scenario docker build -t feedbackloop-demo .`. The workflow name, triggers, job name, and runner remained valid, demonstrating the precise old-test false positive.
+- **Mutation RED command:** `C:\Users\13900\anaconda3\python.exe -m pytest tests/demo/test_github_delivery.py -q`
+- **Mutation RED result:** the exact ordered-step assertion failed at index `0`: the echo-only `run` mapping did not equal `{"uses": "actions/checkout@v4"}`; pytest also reported `Right contains 5 more items`; `1 failed in 0.14s`.
+- **Restored GREEN command:** `C:\Users\13900\anaconda3\python.exe -m pytest tests/demo/test_github_delivery.py -q`
+- **Restored GREEN result:** `1 passed in 0.05s`.
+- **Strengthened contract:** the test now requires workflow name `CI`, exactly the `push` and `pull_request` triggers, exactly one `quality` job on `ubuntu-latest`, and the six exact ordered step mappings from checkout through Docker build.
