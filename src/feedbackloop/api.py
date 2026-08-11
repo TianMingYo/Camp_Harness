@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tempfile
+import subprocess
 from pathlib import Path
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, status
@@ -8,13 +9,19 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from feedbackloop.context import ContextBuilder, Plan
+from feedbackloop.context import ContextBuilder
 from feedbackloop.credentials import CredentialService
 from feedbackloop.executor import LocalExecutor, command_text
-from feedbackloop.feedback import FeedbackClassifier
-from feedbackloop.llm import OpenAICompatibleClient
+from feedbackloop.feedback import FeedbackClassifier, redact_and_truncate
+from feedbackloop.llm import (
+    InvalidLLMResponse,
+    OpenAICompatibleClient,
+    PlanGenerator,
+    PlanningContext,
+)
 from feedbackloop.loop import FeedbackLoop
 from feedbackloop.models import (
+    Action,
     ApprovalDecision,
     ActionType,
     Task,
@@ -22,7 +29,7 @@ from feedbackloop.models import (
     TaskState,
     ValidationCommand,
 )
-from feedbackloop.policy import PolicyEngine
+from feedbackloop.policy import DecisionKind, PolicyEngine
 from feedbackloop.state import TaskStateMachine
 from feedbackloop.store import Store
 from feedbackloop.workspace import InvalidRepositoryError, Workspace
@@ -96,10 +103,120 @@ def _task_for_approval(task_store: Store, approval_id: str) -> Task | None:
     return task_store.get_task(iteration.task_id)
 
 
+def _normalize_plan_files(workspace: Workspace, paths: tuple[str, ...]) -> tuple[str, ...]:
+    root = workspace.resolve_repo()
+    normalized: list[str] = []
+    for value in paths:
+        if not value.strip() or Path(value).is_absolute():
+            raise ValueError("plan files must be non-empty repository-relative paths")
+        resolved = workspace.resolve_child(value)
+        relative = resolved.relative_to(root).as_posix()
+        decision = PolicyEngine().check(Action.read(relative), workspace)
+        if decision.kind is DecisionKind.DENY:
+            raise ValueError(decision.reason)
+        if relative not in normalized:
+            normalized.append(relative)
+    return tuple(normalized)
+
+
+def _repository_summary(repo: Path) -> str:
+    manifests = (
+        "AGENTS.md",
+        "Cargo.toml",
+        "GEMINI.md",
+        "package.json",
+        "pyproject.toml",
+        "README.md",
+    )
+    present = [name for name in manifests if (repo / name).is_file()]
+    try:
+        branch = subprocess.run(
+            ["git", "-C", str(repo), "branch", "--show-current"],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=10,
+        ).stdout.strip()
+        status_summary = subprocess.run(
+            ["git", "-C", str(repo), "status", "--short"],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=10,
+        ).stdout.splitlines()[:20]
+    except (OSError, subprocess.SubprocessError):
+        branch = "unavailable"
+        status_summary = []
+    return (
+        f"branch: {branch or 'detached'}\n"
+        f"manifests: {', '.join(present) or 'none'}\n"
+        f"status: {len(status_summary)} changed path(s)"
+    )
+
+
+def _generate_plan(
+    *,
+    task: Task,
+    task_store: Store,
+    workspace: Workspace,
+    allowed_files: tuple[str, ...],
+    validation_commands: tuple[ValidationCommand, ...],
+    planner: PlanGenerator,
+) -> None:
+    command_list = tuple(command_text(item) for item in validation_commands)
+    try:
+        plan = planner.generate_plan(
+            PlanningContext(
+                task_request=task.request,
+                repository_summary=_repository_summary(Path(task.repo_root)),
+                allowed_files=allowed_files,
+                validation_commands=command_list,
+            )
+        )
+        normalized_files = _normalize_plan_files(workspace, plan.files)
+        if not set(normalized_files).issubset(allowed_files):
+            raise ValueError("generated plan exceeds the authorized file scope")
+        if plan.validation_commands != command_list:
+            raise ValueError("generated plan changed the configured validation commands")
+        if plan.estimated_iterations > task.max_iterations:
+            raise ValueError("generated plan exceeds the task iteration limit")
+        plan = plan.model_copy(update={"files": normalized_files})
+        task_store.save_plan(task.id, plan)
+        state = TaskStateMachine(task.state).transition(TaskEvent.PLAN_READY)
+        task_store.update_task(task.model_copy(update={"state": state}))
+        task_store.append_audit_event(task.id, "plan_ready", {"state": state.value})
+        task_store.append_audit_event(
+            task.id,
+            "state_transition",
+            {"from": task.state.value, "to": state.value},
+        )
+    except Exception as error:
+        state = TaskStateMachine(task.state).transition(TaskEvent.FAIL)
+        task_store.update_task(task.model_copy(update={"state": state}))
+        task_store.append_audit_event(
+            task.id,
+            "state_transition",
+            {"from": task.state.value, "to": state.value},
+        )
+        raw_summary = (
+            error.raw_content
+            if isinstance(error, InvalidLLMResponse) and error.raw_content
+            else str(error) or type(error).__name__
+        )
+        task_store.append_audit_event(
+            task.id,
+            "plan_generation_failed",
+            {"summary": redact_and_truncate(raw_summary, 1_000)},
+        )
+
+
 def create_app(
     *,
     store: Store | None = None,
     loop: FeedbackLoop | None = None,
+    planner: PlanGenerator | None = None,
     credentials: CredentialService | None = None,
     demo: bool = False,
     public_demo: bool = False,
@@ -119,18 +236,24 @@ def create_app(
         return HTMLResponse("<h1>Feedback Loop</h1>")
 
     @app.post("/tasks", status_code=status.HTTP_201_CREATED)
-    def create_task(request: TaskCreateRequest):
+    def create_task(request: TaskCreateRequest, background_tasks: BackgroundTasks):
         if public_demo and request.repo_root:
             raise HTTPException(400, "public demo does not accept local repository paths")
         if not request.plan_files or "**" in request.plan_files:
             raise HTTPException(400, "explicit plan file paths are required")
-        if loop is None and not (request.provider and request.base_url and request.model):
-            raise HTTPException(
-                400, "provider, base_url and model are required for local execution"
+        provider_ready = bool(request.provider and request.base_url and request.model)
+        if planner is None and not provider_ready:
+            message = (
+                "provider, base_url and model are required for local execution"
+                if loop is None
+                else "planner or complete provider configuration is required"
             )
+            raise HTTPException(400, message)
         try:
-            repo = Workspace(Path(request.repo_root)).resolve_repo()
-        except InvalidRepositoryError as error:
+            workspace = Workspace(Path(request.repo_root))
+            repo = workspace.resolve_repo()
+            plan_files = _normalize_plan_files(workspace, request.plan_files)
+        except (InvalidRepositoryError, ValueError) as error:
             raise HTTPException(400, str(error)) from error
         detected = ValidationDetector.detect(repo)
         validation_commands = ValidationDetector.apply_overrides(
@@ -138,6 +261,10 @@ def create_app(
         )
         if not validation_commands:
             raise HTTPException(400, "at least one validation command is required")
+        try:
+            ValidationDetector.preflight(validation_commands, repo)
+        except ValueError as error:
+            raise HTTPException(400, str(error)) from error
         task = Task.create(
             repo_root=str(repo),
             request=request.request,
@@ -148,18 +275,25 @@ def create_app(
             max_iterations=request.max_iterations,
         )
         task_store.create_task(task)
-        task_store.save_plan(
-            task.id,
-            Plan(
-                summary=request.request,
-                files=request.plan_files,
-                steps=(request.request,),
-                acceptance_criteria=tuple(command_text(item) for item in validation_commands),
-            ),
+        active_planner = planner
+        if active_planner is None:
+            if not (task.provider and task.base_url and task.model):
+                raise HTTPException(400, "complete provider configuration is required")
+            active_planner = OpenAICompatibleClient(
+                base_url=task.base_url,
+                model=task.model,
+                provider=task.provider,
+                credential_provider=credential_service.build_provider(task.provider),
+            )
+        background_tasks.add_task(
+            _generate_plan,
+            task=task,
+            task_store=task_store,
+            workspace=workspace,
+            allowed_files=plan_files,
+            validation_commands=tuple(validation_commands),
+            planner=active_planner,
         )
-        state = TaskStateMachine(task.state).transition(TaskEvent.PLAN_READY)
-        task = task.model_copy(update={"state": state})
-        task_store.update_task(task)
         return task.model_dump(mode="json")
 
     @app.post("/tasks/{task_id}/plan/approve", status_code=status.HTTP_202_ACCEPTED)
@@ -191,6 +325,7 @@ def create_app(
             "task": task.model_dump(mode="json"),
             "plan": plan.model_dump(mode="json") if plan else None,
             "iterations": [item.model_dump(mode="json") for item in task_store.list_iterations(task_id)],
+            "audit_events": task_store.list_audit_events(task_id),
             "approvals": [
                 {
                     "approval": item.model_dump(mode="json"),

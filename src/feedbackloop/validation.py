@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -44,7 +45,39 @@ class ValidationDetector:
     ) -> list[ValidationCommand]:
         if overrides is None:
             return list(detected)
-        return list(overrides)
+        override_groups: dict[str, list[ValidationCommand]] = {}
+        for command in overrides:
+            override_groups.setdefault(command.kind, []).append(command)
+
+        result: list[ValidationCommand] = []
+        emitted: set[str] = set()
+        for command in detected:
+            replacements = override_groups.get(command.kind)
+            if replacements is None:
+                result.append(command)
+            elif command.kind not in emitted:
+                result.extend(replacements)
+                emitted.add(command.kind)
+        for command in overrides:
+            if command.kind not in emitted:
+                result.extend(override_groups[command.kind])
+                emitted.add(command.kind)
+        return result
+
+    @staticmethod
+    def preflight(commands: Iterable[ValidationCommand], repo_root: Path) -> None:
+        root = Path(repo_root)
+        for command in commands:
+            executable = Path(command.executable)
+            if executable.is_absolute() or executable.parent != Path("."):
+                candidate = executable if executable.is_absolute() else root / executable
+                available = candidate.is_file()
+            else:
+                available = shutil.which(command.executable) is not None
+            if not available:
+                raise ValueError(
+                    f"validation executable is unavailable: {command.executable}"
+                )
 
 
 def _bounded(text: str, limit: int) -> str:

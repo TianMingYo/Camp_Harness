@@ -1,3 +1,5 @@
+import { shouldPollTask, syncApprovalState } from "./task-state.mjs";
+
 const status = document.querySelector("#status");
 const button = document.querySelector("#create");
 const approve = document.querySelector("#approve");
@@ -41,6 +43,12 @@ async function refresh(id) {
   const payload = await response.json();
   status.textContent = JSON.stringify(payload, null, 2);
   renderApprovals(payload.approvals);
+  syncApprovalState(payload, approve);
+  if (!shouldPollTask(payload) && poller) {
+    clearInterval(poller);
+    poller = null;
+  }
+  return payload;
 }
 
 function startPolling(id) {
@@ -89,13 +97,15 @@ button.addEventListener("click", async () => {
   status.textContent = JSON.stringify(task, null, 2);
   if (task.id) {
     currentTask = task.id;
-    approve.disabled = false;
-    await refresh(task.id);
+    approve.disabled = true;
+    const payload = await refresh(task.id);
+    if (shouldPollTask(payload)) startPolling(task.id);
   }
 });
 
 approve.addEventListener("click", async () => {
   if (!currentTask) return;
+  approve.disabled = true;
   const response = await fetch(`/tasks/${currentTask}/plan/approve`, { method: "POST" });
   status.textContent = JSON.stringify(await response.json(), null, 2);
   startPolling(currentTask);

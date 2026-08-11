@@ -127,6 +127,15 @@ class Store:
                 (iteration.id, iteration.task_id, iteration.number, _payload(iteration)),
             )
 
+    def update_iteration(self, iteration: IterationRecord) -> None:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "UPDATE iterations SET payload=? WHERE id=?",
+                (_payload(iteration), iteration.id),
+            )
+            if cursor.rowcount != 1:
+                raise KeyError(iteration.id)
+
     def get_iteration(self, iteration_id: str) -> IterationRecord | None:
         payload = self._one("SELECT payload FROM iterations WHERE id=?", (iteration_id,))
         return IterationRecord.model_validate_json(payload) if payload else None

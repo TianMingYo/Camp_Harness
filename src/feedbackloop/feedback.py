@@ -9,12 +9,16 @@ _BEARER_RE = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+")
 _ASSIGNMENT_RE = re.compile(
     r"(?i)\b(api[_-]?key|access[_-]?token|token|secret)\s*[:=]\s*[^\s,;]+"
 )
+_JSON_CREDENTIAL_RE = re.compile(
+    r'(?i)("(?:api[_-]?key|access[_-]?token|token|secret)"\s*:\s*")[^"]*(")'
+)
 
 
 def redact_and_truncate(text: str, max_chars: int) -> str:
     if max_chars < 0:
         raise ValueError("max_chars must not be negative")
-    redacted = _BEARER_RE.sub("Bearer [REDACTED]", text)
+    redacted = _JSON_CREDENTIAL_RE.sub(r"\1[REDACTED]\2", text)
+    redacted = _BEARER_RE.sub("Bearer [REDACTED]", redacted)
     redacted = _ASSIGNMENT_RE.sub(lambda match: f"{match.group(1)}=[REDACTED]", redacted)
     if len(redacted) <= max_chars:
         return redacted

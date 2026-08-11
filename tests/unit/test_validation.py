@@ -23,11 +23,21 @@ def test_detects_node_and_rust_markers(tmp_path: Path):
     assert any(command.executable == "cargo" for command in ValidationDetector.detect(tmp_path))
 
 
-def test_overrides_replace_detected_commands(tmp_path: Path):
-    detected = [ValidationCommand(kind="test", executable="pytest")]
-    overrides = [ValidationCommand(kind="lint", executable="ruff", args=("check", "."))]
+def test_overrides_replace_only_commands_of_the_same_kind(tmp_path: Path):
+    detected = [
+        ValidationCommand(kind="test", executable="pytest"),
+        ValidationCommand(kind="lint", executable="ruff", args=("check", ".")),
+    ]
+    overrides = [
+        ValidationCommand(
+            kind="test", executable="python", args=("-m", "pytest", "focused")
+        )
+    ]
 
-    assert ValidationDetector.apply_overrides(detected, overrides) == overrides
+    assert ValidationDetector.apply_overrides(detected, overrides) == [
+        overrides[0],
+        detected[1],
+    ]
 
 
 def test_empty_repo_has_no_implicit_command(tmp_path: Path):

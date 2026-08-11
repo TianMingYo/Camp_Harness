@@ -19,11 +19,11 @@ python -m pytest -q
 python -m uvicorn feedbackloop.api:app --host 127.0.0.1 --port 8000
 ```
 
-打开 `http://127.0.0.1:8000`。本地模式接受一个规范化 Git 仓库路径，自动检测 Python、Node、Rust 验收命令，并允许用 executable 与 JSON 字符串参数数组覆盖。填写 provider、base URL、model，保存同名 provider 的 key，创建任务并确认计划后，长任务由 API background task 启动，WebUI 轮询任务状态。危险动作会显示 Allow/Deny，允许后执行并从下一迭代继续。
+打开 `http://127.0.0.1:8000`。本地模式接受一个规范化 Git 仓库路径，自动检测 Python、Node、Rust 验收命令，并允许用 executable 与 JSON 字符串参数数组覆盖；覆盖按 `kind` 替换同类命令，不会删除其他已检测类别。填写 provider、base URL、model，保存同名 provider 的 key，再提交自然语言需求和明确的文件授权范围。创建接口先返回 `draft`；后台调用兼容供应商生成结构化计划，WebUI 自动轮询，只有计划通过范围和验收命令校验后才启用批准按钮。批准后长任务由 API background task 启动。危险动作会显示 Allow/Deny，允许后执行并从下一迭代继续。
 
 ## Provider configuration
 
-供应商需要兼容 `POST {base_url}/chat/completions`、Bearer 鉴权和标准 `choices[0].message.content`。运行时配置 provider、base URL 与 model；key 通过 WebUI/API 写入操作系统 keyring，SQLite 只保存配置状态和不可逆指纹。
+供应商需要兼容 `POST {base_url}/chat/completions`、Bearer 鉴权、JSON object response format 和标准 `choices[0].message.content`。同一个 OpenAI-compatible 适配器先生成结构化计划，再在批准后的反馈循环中生成结构化动作。运行时配置 provider、base URL 与 model；key 通过 WebUI/API 写入操作系统 keyring，SQLite 只保存配置状态和不可逆指纹。
 
 ```http
 POST /providers/glm/credentials
@@ -76,7 +76,8 @@ docker run --rm -p 8000:8000 feedbackloop-demo
 - 公网部署 URL 尚未配置；提交前必须完成 GitLab CI pass 和公开 WebUI 部署并在此处补充 URL。
 - `REFLECTION.md` 必须由学生本人完成，仓库仅提供问题模板。
 - 本地执行器支持仓库内读、写、已批准删除和已声明验收命令；network、Git push 与未声明命令仍会被策略拦截，当前版本不执行这些动作。
-- 本地创建任务时必须填写 provider、base URL、model、至少一条验收命令和明确的计划文件路径；应用不会把未列入计划的文件摘要发送给模型。
+- 本地创建任务时必须填写 provider、base URL、model、至少一条验收命令和明确的文件授权范围；模型生成的计划文件只能是该范围的子集，应用不会把未授权文件摘要发送给模型。
+- 计划生成失败时任务进入 `failed`，原始模型响应只保留限长脱敏摘要；可以修正供应商配置后新建任务，不会批准解析失败的计划。
 
 ## Third-party dependencies
 

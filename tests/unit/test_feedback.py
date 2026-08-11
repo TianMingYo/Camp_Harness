@@ -68,3 +68,12 @@ def test_redaction_happens_before_truncation():
     assert "also-secret" not in redacted
     assert len(redacted) <= 70
     assert redacted.endswith("[truncated]")
+
+
+def test_redaction_handles_json_credential_fields():
+    redacted = redact_and_truncate(
+        '{"api_key":"sk-private-value","result":"invalid"}', 200
+    )
+
+    assert "sk-private-value" not in redacted
+    assert "invalid" in redacted

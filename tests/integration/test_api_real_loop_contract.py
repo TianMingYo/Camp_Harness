@@ -30,6 +30,20 @@ class Executor:
     def validate(self, command): raise AssertionError("background run is not executed in this contract test")
 
 
+class Planner:
+    def generate_plan(self, context):
+        return Plan(
+            summary="implement feature",
+            files=context.allowed_files,
+            steps=("implement feature",),
+            expected_behavior="feature is available",
+            acceptance_criteria=("configured validation passes",),
+            validation_commands=context.validation_commands,
+            potential_dangerous_actions=(),
+            estimated_iterations=1,
+        )
+
+
 def test_created_plan_can_be_approved_by_real_loop(tmp_path: Path):
     repo = tmp_path / "repo"
     init_git_repo(repo)
@@ -40,7 +54,10 @@ def test_created_plan_can_be_approved_by_real_loop(tmp_path: Path):
         context_builder=ContextBuilder(),
     )
     client = TestClient(create_app(
-        store=store, loop=loop, credentials=CredentialService(MemoryKeyring())
+        store=store,
+        loop=loop,
+        planner=Planner(),
+        credentials=CredentialService(MemoryKeyring()),
     ))
     task_id = client.post(
         "/tasks",

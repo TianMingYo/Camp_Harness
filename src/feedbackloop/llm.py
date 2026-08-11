@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import json
 from collections import deque
-from typing import Protocol
+from typing import Literal, Protocol
 
 import httpx
-from pydantic import ValidationError
+from pydantic import Field, ValidationError
 
-from feedbackloop.context import AgentContext
+from feedbackloop.context import AgentContext, Plan
 from feedbackloop.models import Action, DomainModel
 
 
@@ -16,7 +16,9 @@ class LLMProviderError(RuntimeError):
 
 
 class InvalidLLMResponse(LLMProviderError):
-    pass
+    def __init__(self, message: str, *, raw_content: str | None = None) -> None:
+        super().__init__(message)
+        self.raw_content = raw_content
 
 
 class LLMResponse(DomainModel):
@@ -24,8 +26,32 @@ class LLMResponse(DomainModel):
     raw_content: str | None = None
 
 
+class PlanningContext(DomainModel):
+    task_request: str = Field(min_length=1)
+    repository_summary: str
+    allowed_files: tuple[str, ...] = Field(min_length=1)
+    validation_commands: tuple[str, ...] = Field(min_length=1)
+
+
+class _StructuredPlan(DomainModel):
+    summary: str = Field(min_length=1)
+    files: tuple[str, ...] = Field(min_length=1)
+    steps: tuple[str, ...] = Field(min_length=1)
+    expected_behavior: str = Field(min_length=1)
+    acceptance_criteria: tuple[str, ...] = Field(min_length=1)
+    validation_commands: tuple[str, ...] = Field(min_length=1)
+    potential_dangerous_actions: tuple[
+        Literal["command", "delete", "network", "git_push"], ...
+    ]
+    estimated_iterations: int = Field(ge=1, le=5)
+
+
 class LLMClient(Protocol):
     def complete(self, context: AgentContext) -> LLMResponse: ...
+
+
+class PlanGenerator(Protocol):
+    def generate_plan(self, context: PlanningContext) -> Plan: ...
 
 
 class CredentialProvider(Protocol):
@@ -40,6 +66,17 @@ def parse_action_response(payload: str) -> tuple[Action, ...]:
         return tuple(Action.model_validate(item) for item in parsed["actions"])
     except (json.JSONDecodeError, TypeError, ValidationError) as error:
         raise InvalidLLMResponse("invalid structured action response") from error
+
+
+def parse_plan_response(payload: str) -> Plan:
+    try:
+        parsed = json.loads(payload)
+        structured = _StructuredPlan.model_validate(parsed)
+        return Plan.model_validate(structured.model_dump())
+    except (json.JSONDecodeError, TypeError, ValidationError) as error:
+        raise InvalidLLMResponse(
+            "invalid structured plan response", raw_content=payload
+        ) from error
 
 
 class MockLLM:
@@ -72,6 +109,24 @@ class OpenAICompatibleClient:
         self.timeout_seconds = timeout_seconds
 
     def complete(self, context: AgentContext) -> LLMResponse:
+        content = self._chat_json(
+            "Return one JSON object with an actions array and no prose.",
+            context.model_dump_json(),
+        )
+        return LLMResponse(actions=parse_action_response(content), raw_content=content)
+
+    def generate_plan(self, context: PlanningContext) -> Plan:
+        content = self._chat_json(
+            (
+                "Return one JSON plan object with summary, files, steps, "
+                "expected_behavior, acceptance_criteria, validation_commands, "
+                "potential_dangerous_actions, and estimated_iterations. No prose."
+            ),
+            context.model_dump_json(),
+        )
+        return parse_plan_response(content)
+
+    def _chat_json(self, system_message: str, user_message: str) -> str:
         key = self.credential_provider.get(self.provider)
         if not key:
             raise LLMProviderError(f"credential is not configured for {self.provider}")
@@ -80,14 +135,16 @@ class OpenAICompatibleClient:
             "messages": [
                 {
                     "role": "system",
-                    "content": "Return one JSON object with an actions array and no prose.",
+                    "content": system_message,
                 },
-                {"role": "user", "content": context.model_dump_json()},
+                {"role": "user", "content": user_message},
             ],
             "response_format": {"type": "json_object"},
         }
         try:
-            with httpx.Client(transport=self.transport, timeout=self.timeout_seconds) as client:
+            with httpx.Client(
+                transport=self.transport, timeout=self.timeout_seconds
+            ) as client:
                 response = client.post(
                     f"{self.base_url}/chat/completions",
                     headers={"Authorization": f"Bearer {key}"},
@@ -106,5 +163,7 @@ class OpenAICompatibleClient:
             if not isinstance(content, str):
                 raise TypeError("message content must be text")
         except (KeyError, IndexError, TypeError, AttributeError) as error:
-            raise InvalidLLMResponse("provider response is missing message content") from error
-        return LLMResponse(actions=parse_action_response(content), raw_content=content)
+            raise InvalidLLMResponse(
+                "provider response is missing message content"
+            ) from error
+        return content

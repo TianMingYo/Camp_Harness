@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Iterable
 
 from feedbackloop.models import Action, ActionRisk, ActionType
+from feedbackloop.security import is_sensitive_path
 from feedbackloop.workspace import Workspace, WorkspaceError
 
 
@@ -68,7 +69,7 @@ class PolicyEngine:
         except WorkspaceError as error:
             return PolicyDecision(DecisionKind.DENY, str(error))
 
-        if _is_sensitive(relative):
+        if is_sensitive_path(relative):
             return PolicyDecision(
                 DecisionKind.DENY, "access to sensitive files is denied"
             )
@@ -109,25 +110,6 @@ class PolicyEngine:
                 "action marked dangerous requires approval",
             )
         return PolicyDecision(DecisionKind.ALLOW, "declared command is allowed")
-
-
-def _is_sensitive(relative: Path) -> bool:
-    lowered_parts = tuple(part.casefold() for part in relative.parts)
-    sensitive_names = {
-        ".netrc",
-        "credentials",
-        "id_dsa",
-        "id_ed25519",
-        "id_ecdsa",
-        "id_rsa",
-    }
-    return any(
-        part == ".git"
-        or part == ".env"
-        or part.startswith(".env.")
-        or part in sensitive_names
-        for part in lowered_parts
-    )
 
 
 def _contains_shell_chaining(command: str) -> bool:

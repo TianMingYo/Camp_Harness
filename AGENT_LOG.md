@@ -122,6 +122,79 @@
   also pass. The symlink test skip remains Windows privilege-related. Docker, remote CI, public URL,
   and student reflection remain external gates.
 
+## 2026-08-11 - Structured planning and audit review closure
+
+- **Review verification:** the remaining independent findings were checked against the current
+  branch. The accepted gaps were missing Plan approval timestamps and state audits, false
+  `progressed` values, contradictory no-progress feedback, lost partial-action outcomes, missing
+  total context budgets, late validation executable failures, and request-echo plans that did not
+  satisfy SPEC 4.3.
+- **TDD evidence:** focused RED runs reproduced each behavior before its production fix. The loop
+  now persists Plan approval time, state transitions, per-action completion/failure, truthful
+  fingerprints, explicit `NO_PROGRESS`, and stop-reason audits. Plan parsing, OpenAI-compatible
+  plan generation, asynchronous API state, file-scope enforcement, validation-command integrity,
+  iteration bounds, raw-response redaction, and WebUI approval timing each have focused tests.
+- **Temporary TDD deviation and correction:** the first asynchronous planning GREEN patch included
+  repository-summary and three plan-boundary checks before those branches had focused RED tests.
+  Those unproven lines were removed immediately. Four focused tests then failed for the expected
+  missing behaviors, and only then were the same checks reintroduced and verified GREEN. No commit
+  contains the premature implementation.
+- **Frontend test environment:** the WebUI state module is exercised through Node.js when Node is
+  available. The Python-only GitLab image may report this one supplemental test as skipped; API
+  state and approval gating remain covered independently by Python integration tests.
+- **Provider boundary:** all automated plan-generation tests use injected planners or
+  `httpx.MockTransport`; no real key or network request is used. Claude Code configured with GLM
+  5.2 remains the cold-start/review CLI only and does not receive write authority over this branch.
+
+### Focused RED/GREEN evidence
+
+All Python commands below used `C:\Users\13900\anaconda3\python.exe -m pytest ... -q` from the
+feature worktree. Each command was rerun unchanged after the minimal implementation patch.
+
+| Behavior | Focused pytest nodeid(s) | Observed RED | GREEN |
+| --- | --- | --- | --- |
+| Plan approval time and state audit | `tests/unit/test_loop.py::test_plan_approval_persists_timestamp_and_state_audit` | `Plan` had no `approved_at` | `1 passed` |
+| Truthful progress and no-progress feedback | `tests/unit/test_loop.py::test_loop_uses_failure_feedback_to_reach_pass tests/unit/test_loop.py::test_two_equivalent_rounds_pause_for_no_progress` | progress was always false; final kind was `TEST_FAILURE` | `2 passed` |
+| API audit exposure | `tests/integration/test_api.py::test_task_create_approve_and_get_status` | `audit_events` key missing | `1 passed` |
+| Partial action persistence | `tests/unit/test_loop.py::test_partial_action_failure_persists_each_action_outcome` | stored action list was empty | `1 passed` |
+| Complete structured Plan parser | `tests/unit/test_llm.py::test_plan_parser_requires_complete_structured_plan` | `parse_plan_response` missing | `1 passed` |
+| OpenAI-compatible plan generation | `tests/unit/test_llm.py::test_openai_compatible_client_generates_structured_plan` | `generate_plan` missing | `1 passed` |
+| Async planning success/failure | `tests/integration/test_api.py::test_task_create_approve_and_get_status tests/integration/test_api.py::test_plan_generation_failure_is_persisted_without_a_plan` | `create_app` rejected `planner` injection | `2 passed` |
+| Repository summary and Plan limits | `tests/integration/test_api.py::test_planner_receives_bounded_repository_summary tests/integration/test_api.py::test_generated_plan_cannot_expand_authorized_file_scope tests/integration/test_api.py::test_generated_plan_cannot_change_harness_limits` | empty summary and unauthorized plans entered approval | `4 passed` |
+| Raw invalid-plan redaction | `tests/unit/test_llm.py::test_invalid_plan_response_retains_raw_content_for_boundary_redaction tests/unit/test_feedback.py::test_redaction_handles_json_credential_fields tests/integration/test_api.py::test_invalid_plan_audit_keeps_only_redacted_raw_summary` | raw content unavailable; JSON secret leaked; audit lost diagnostic | focused tests passed |
+| WebUI async approval state | `tests/unit/test_web_state.py::test_async_planning_controls_approval_and_polling` | Node `ERR_MODULE_NOT_FOUND` for state module | `1 passed` |
+| Explicit stop audits | `tests/unit/test_loop.py::test_two_equivalent_rounds_pause_for_no_progress tests/unit/test_loop.py::test_iteration_limit_pauses_with_explicit_stop_audit` | last event was only a state transition | `2 passed` |
+| Post-action exception consistency | `tests/unit/test_loop.py::test_partial_action_failure_persists_each_action_outcome tests/unit/test_loop.py::test_validation_exception_updates_existing_iteration_and_fails_task` | false progress and SQLite iteration uniqueness error | `2 passed` |
+| Objective success gate audit | `tests/unit/test_loop.py::test_loop_uses_failure_feedback_to_reach_pass` | audit jumped directly from running to succeeded | `1 passed` |
+| Approved action execution failure | `tests/unit/test_loop.py::test_approved_action_failure_marks_action_and_audits_real_transitions` | failed action remained proposed | `1 passed` |
+| Shared sensitive-path policy | `tests/integration/test_api.py::test_task_creation_normalizes_plan_paths_and_rejects_unsafe_scope tests/unit/test_context.py::test_context_excludes_sensitive_files_and_bounds_summary` | `.npmrc` and private key paths were accepted | `2 passed` |
+| Restart-safe no-progress streak | `tests/unit/test_loop.py::test_no_progress_streak_is_reconstructed_from_persisted_iterations` | task exhausted mock response and failed instead of pausing | `1 passed` |
+| Complete mixed action batch | `tests/unit/test_loop.py::test_mixed_safe_and_dangerous_batch_persists_every_proposed_action` | safe write disappeared | `1 passed` |
+| Planner configuration error | `tests/integration/test_api.py::test_injected_loop_requires_explicit_planner_or_provider` | assertion escaped as server error | `1 passed` |
+| Same-kind validation override | `tests/unit/test_validation.py::test_overrides_replace_only_commands_of_the_same_kind` | unrelated lint command was discarded | `1 passed` |
+| Approval batch action order | `tests/unit/test_loop.py::test_approval_batch_preserves_model_action_order` | safe suffix executed before the earlier delete approval | `1 passed` |
+| Unavailable post-action fingerprint | `tests/unit/test_loop.py::test_post_action_fingerprint_failure_records_known_progress` | completed write was recorded as no progress | `1 passed` |
+| Unexpected approved-action exception | `tests/unit/test_loop.py::test_unexpected_approved_action_exception_is_controlled` | `AssertionError` escaped and left action proposed | `1 passed` |
+
+### Review evidence
+
+- Claude Code used the configured GLM 5.2 model as requested. The first read-only review timed out;
+  the escalated retry ended in `ConnectionRefused`; a final approved retry produced no output and
+  was terminated. No Claude process modified the worktree.
+- An independent read-only reviewer then reproduced the post-action iteration collision and
+  identified seven Important consistency issues. Every actionable code issue was converted to a
+  focused RED test and fixed. The reviewer also requested exact TDD evidence; this table is the
+  resulting audit record.
+- **Second review:** the same reviewer confirmed the original Critical and Important findings were
+  closed, then found three follow-on ordering/error-boundary issues. Approval-containing batches
+  now pause in full and execute in original order after approval; an unavailable post-action
+  fingerprint is stored as `unavailable` with known mutation evidence; approved actions catch all
+  ordinary exceptions. Each follow-on issue has the RED/GREEN evidence above.
+- **Post-review verification:** `ruff check src tests demo` passed; the complete suite reported
+  `140 passed, 1 skipped, 1 warning`; compileall, both offline demo entry points, and
+  `git diff --check` passed. The skip is the Windows symbolic-link privilege case and the warning
+  is Starlette TestClient's httpx deprecation notice.
+
 ## Workflow commitment
 
 The remaining Superpowers workflow is `writing-plans` → `using-git-worktrees` →

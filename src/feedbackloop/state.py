@@ -9,6 +9,7 @@ class IllegalStateTransition(ValueError):
 
 TRANSITIONS: dict[tuple[TaskState, TaskEvent], TaskState] = {
     (TaskState.DRAFT, TaskEvent.PLAN_READY): TaskState.AWAITING_PLAN_APPROVAL,
+    (TaskState.DRAFT, TaskEvent.FAIL): TaskState.FAILED,
     (TaskState.AWAITING_PLAN_APPROVAL, TaskEvent.PLAN_APPROVED): TaskState.RUNNING,
     (TaskState.RUNNING, TaskEvent.VALIDATION_PASSED): TaskState.VALIDATION_PASSED,
     (TaskState.VALIDATION_PASSED, TaskEvent.MARK_SUCCEEDED): TaskState.SUCCEEDED,
