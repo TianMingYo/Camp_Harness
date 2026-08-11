@@ -85,7 +85,7 @@ Require Ubuntu on `x86_64`, at least 1 GiB usable memory, enough free disk for t
 - Modify: remote VPS packages and Docker runtime only after separate approval.
 
 **Interfaces:**
-- Consumes: approved SSH target from Task 1 and anonymous manifest digest `sha256:b7a0c1382a52d16266467b8b410abdece06ce980164d72f74d593e0122f51714`.
+- Consumes: approved SSH target from Task 1 and anonymous manifest digest `sha256:c51472d590a14f62c01a5143b43732e0130f83c8aeb9f7f86a368d065726d00f`.
 - Produces: one Docker container named `feedbackloop-harness`, restart policy `unless-stopped`, host TCP port 80 mapped to container port 8000.
 
 - [ ] **Step 1: Install Docker only if preflight found it absent**
@@ -113,7 +113,7 @@ If the exact container name or port 80 is occupied, stop and obtain approval for
 After explicit approval, run:
 
 ```powershell
-ssh @sshArgs 'set -eu; sudo docker pull ghcr.io/tianmingyo/camp_harness@sha256:b7a0c1382a52d16266467b8b410abdece06ce980164d72f74d593e0122f51714; sudo docker run -d --name feedbackloop-harness --restart unless-stopped -p 80:8000 ghcr.io/tianmingyo/camp_harness@sha256:b7a0c1382a52d16266467b8b410abdece06ce980164d72f74d593e0122f51714; sudo docker inspect feedbackloop-harness --format "{{.Id}} {{.Image}} {{.State.Status}} {{.HostConfig.RestartPolicy.Name}} {{json .NetworkSettings.Ports}}"'
+ssh @sshArgs 'set -eu; sudo docker pull ghcr.io/tianmingyo/camp_harness@sha256:c51472d590a14f62c01a5143b43732e0130f83c8aeb9f7f86a368d065726d00f; sudo docker run -d --name feedbackloop-harness --restart unless-stopped -p 80:8000 ghcr.io/tianmingyo/camp_harness@sha256:c51472d590a14f62c01a5143b43732e0130f83c8aeb9f7f86a368d065726d00f; sudo docker inspect feedbackloop-harness --format "{{.Id}} {{.Image}} {{.State.Status}} {{.HostConfig.RestartPolicy.Name}} {{json .NetworkSettings.Ports}}"'
 ```
 
 Expected: container state `running`, restart policy `unless-stopped`, and `8000/tcp` published on host port 80.
@@ -155,7 +155,7 @@ base = sys.argv[1].rstrip("/")
 with httpx.Client(timeout=120, follow_redirects=True) as client:
     root = client.get(f"{base}/")
     assert root.status_code == 200
-    assert "Feedback Loop Harness" in root.text
+    assert "<h1>Feedback Loop</h1>" in root.text
 
     demo = client.get(f"{base}/demo/scenario")
     assert demo.status_code == 200

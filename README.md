@@ -59,7 +59,25 @@ docker build -t feedbackloop-demo .
 docker run --rm -p 8000:8000 feedbackloop-demo
 ```
 
-容器启动 `feedbackloop.api:demo_app`，只暴露内置 mock demo，不接受宿主机仓库路径或真实 key。GitLab CI 的 `unit-test` job 安装包、执行完整 pytest 和离线 demo。
+容器启动 `feedbackloop.api:demo_app`，只暴露内置 mock demo，不接受宿主机仓库路径或真实 key。GitHub Actions 的 `quality` job 安装包、执行完整 pytest、离线 demo、Docker 构建和动态端口 smoke，随后 `publish` job 将同一已验证镜像推送到 GHCR。
+
+公开镜像也可以直接运行：
+
+```powershell
+docker pull ghcr.io/tianmingyo/camp_harness:latest
+docker run --rm -p 8000:8000 ghcr.io/tianmingyo/camp_harness:latest
+```
+
+## Public deployment
+
+- WebUI: `http://121.40.246.197/`
+- Source: `feature/feedback-loop-harness` through Pull Request #1
+- Architecture: GitHub push -> `quality` tests/container smoke -> public GHCR publish -> approved Aliyun VPS pull/run
+- Runtime: Ubuntu 24.04 LTS, Docker, public TCP port 80 mapped to container port 8000
+- Image: `ghcr.io/tianmingyo/camp_harness@sha256:c51472d590a14f62c01a5143b43732e0130f83c8aeb9f7f86a368d065726d00f`
+- Security boundary: mock demo only; no provider credentials, local repository paths, databases, persistent disks, or public secrets
+
+The VPS uses ephemeral container state and must remain rented through the submission verification window. The public endpoint is HTTP on the server IP; the current delivery does not claim TLS or a custom domain. The checked-in Render Blueprint remains an optional reproducible template, but the course delivery URL is the verified Aliyun VPS address above.
 
 ## Project structure
 
@@ -73,7 +91,7 @@ docker run --rm -p 8000:8000 feedbackloop-demo
 
 - Windows 无符号链接权限时，相应边界测试会 skip；Linux CI 应执行该测试。
 - CommandRunner 截断返回内容，但当前仍由 `communicate()` 暂存完整子进程输出。
-- 公网部署 URL 尚未配置；提交前必须完成 GitLab CI pass 和公开 WebUI 部署并在此处补充 URL。
+- 公网部署使用短租阿里云 VPS；容器状态是临时的，服务器到期或容器被删除后不会保留运行时数据。
 - `REFLECTION.md` 必须由学生本人完成，仓库仅提供问题模板。
 - 本地执行器支持仓库内读、写、已批准删除和已声明验收命令；network、Git push 与未声明命令仍会被策略拦截，当前版本不执行这些动作。
 - 本地创建任务时必须填写 provider、base URL、model、至少一条验收命令和明确的文件授权范围；模型生成的计划文件只能是该范围的子集，应用不会把未授权文件摘要发送给模型。
