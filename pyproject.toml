@@ -16,7 +16,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=8,<9"]
+test = ["pytest>=8,<9", "pyyaml>=6,<7"]
 
 [project.scripts]
 feedbackloop-demo = "demo.scenario:main"

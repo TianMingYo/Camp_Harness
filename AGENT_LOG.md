@@ -202,3 +202,15 @@ The remaining Superpowers workflow is `writing-plans` → `using-git-worktrees` 
 `test-driven-development` → `requesting-code-review` →
 `finishing-a-development-branch`. Any deviation will be logged with its reason,
 impact, human intervention and verification evidence.
+
+## 2026-08-11 - GitHub Actions delivery contract
+
+- **RED command:** `C:\Users\13900\anaconda3\python.exe -m pytest tests/demo/test_github_delivery.py -q`
+- **RED result:** `FAILED tests/demo/test_github_delivery.py::test_github_workflow_runs_tests_demo_and_container_build`; `FileNotFoundError: [Errno 2] No such file or directory: 'C:\\Users\\13900\\Desktop\\作业\\智软训练营\\.worktrees\\feedback-loop-harness\\.github\\workflows\\ci.yml'`; `1 failed in 0.17s`.
+- **Focused GREEN command:** `C:\Users\13900\anaconda3\python.exe -m pytest tests/demo/test_github_delivery.py -q`
+- **Focused GREEN result:** `1 passed in 0.06s`.
+- **Full regression command:** `C:\Users\13900\anaconda3\python.exe -m pytest -q`
+- **Full regression result:** `141 passed, 1 skipped, 1 warning in 30.08s`; the skip is the documented Windows symbolic-link privilege case and the warning is Starlette TestClient's httpx deprecation notice.
+- **Ruff command/result:** `ruff check src tests demo` -> `All checks passed!`
+- **Demo command/result:** `C:\Users\13900\anaconda3\python.exe -m demo.scenario` -> `"corrected_after_feedback": true`, `"policy_blocked": true`, `"used_network": false`, `"final_state": "succeeded"`.
+- **Diff command/result:** `git diff --check` exited `0`; Git emitted only the working-copy LF-to-CRLF notice for `pyproject.toml`.
