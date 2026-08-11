@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: feedbackloop-harness-demo
+    runtime: docker
+    plan: free
+    region: singapore
+    repo: https://github.com/TianMingYo/Camp_Harness
+    branch: feature/feedback-loop-harness
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /
+    autoDeployTrigger: checksPass

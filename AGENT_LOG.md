@@ -237,3 +237,43 @@ impact, human intervention and verification evidence.
 - **Initial remote verification:** GitHub Actions pull-request run `31474098931` and push run `31471299922` both completed with conclusion `success`; the PR reported mergeable state `clean` at head `dff22bd`.
 - **TDD applicability:** Task 2 changed remote Git metadata and this audit document only; it introduced no product behavior or implementation code, so no additional RED/GREEN product test was applicable. The previously TDD-developed workflow contract and complete local suite remained the delivery gate.
 - **Remaining external gates:** a public WebUI deployment URL and the student's own `REFLECTION.md` are still required by the course and are not fabricated by the agent.
+
+## 2026-08-11 - Render public deployment and tested-image delivery
+
+- **Mutation rationale:** the stronger delivery contracts fail if the Render Blueprint is absent
+  or targets the wrong repository, branch, plan, region, health path, Docker context, or checks-pass
+  trigger; if the Docker image loses its OCI source label or stops honoring the runtime `PORT`; or
+  if GitHub Actions weakens read-only defaults, skips the dynamic-port smoke, publishes before
+  quality succeeds, publishes on pull requests or other branches, changes the one-day artifact,
+  or tags and pushes an image other than the tested artifact.
+- **RED command:** `C:\Users\13900\anaconda3\python.exe -m pytest tests/demo/test_render_delivery.py tests/demo/test_github_delivery.py -q`
+- **RED result:** `4 failed in 0.19s`. The Render test raised `FileNotFoundError` for absent
+  `render.yaml`; the Docker contract reported the missing OCI source label; the quality contract
+  raised `KeyError: 'permissions'`; and the publication contract raised `KeyError: 'publish'`.
+  These failures were observed before any production configuration was changed.
+- **Focused GREEN command:** `C:\Users\13900\anaconda3\python.exe -m pytest tests/demo/test_render_delivery.py tests/demo/test_github_delivery.py -q`
+- **Focused GREEN result:** `4 passed in 0.05s`.
+- **Full regression command/result:** `C:\Users\13900\anaconda3\python.exe -m pytest -q` ->
+  `144 passed, 1 skipped, 1 warning in 23.45s`. The skip is the documented Windows symbolic-link
+  privilege case; the warning is Starlette TestClient's httpx deprecation notice.
+- **Ruff command/result:** `ruff check src tests demo` -> `All checks passed!`.
+- **Compile command/result:** `C:\Users\13900\anaconda3\python.exe -m compileall -q src demo tests`
+  exited `0` with no output.
+- **Demo command/result:** `C:\Users\13900\anaconda3\python.exe -m demo.scenario` ->
+  `corrected_after_feedback=true`, `policy_blocked=true`, `used_network=false`, and
+  `final_state=succeeded`.
+- **Diff command/result:** `git diff --check` exited `0`; Git emitted only expected Windows
+  LF-to-CRLF working-copy notices.
+- **Docker-local limitation:** `docker version` failed because `docker` is not installed or not on
+  `PATH` in this environment. No local image build/container smoke was fabricated; the checked-in
+  workflow performs both on GitHub's Ubuntu runner before saving the artifact.
+- **External-action boundary:** no push, GitHub or Render API call, GHCR visibility change, or cloud
+  service creation was performed by this task.
+- **Self-review:** permissions remain read-only except for the dependent publish job's package
+  write scope; publication is restricted to pushes on `feature/feedback-loop-harness`; the publish
+  job downloads the one-day artifact produced only after the quality job builds and smokes the
+  image. No Critical, Important, or Minor issue was found in the implementation diff.
+- **Reviewer handoff:** independently review the complete range from
+  `da9644aa8e969322844ad8900cd75559b1808569` through the task commit, including the exact contracts
+  in `tests/demo/test_render_delivery.py` and `tests/demo/test_github_delivery.py`. Overall task
+  acceptance remains pending that independent approval.
