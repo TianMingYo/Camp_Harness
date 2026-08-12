@@ -74,7 +74,7 @@ docker run --rm -p 8000:8000 ghcr.io/tianmingyo/camp_harness:latest
 - Source: `feature/feedback-loop-harness` through Pull Request #1
 - Architecture: GitHub push -> `quality` tests/container smoke -> public GHCR publish -> approved Aliyun VPS pull/run
 - Runtime: Ubuntu 24.04 LTS, Docker, public TCP port 80 mapped to container port 8000
-- Image: `ghcr.io/tianmingyo/camp_harness@sha256:c51472d590a14f62c01a5143b43732e0130f83c8aeb9f7f86a368d065726d00f`
+- Image: `ghcr.io/tianmingyo/camp_harness:latest` (public GHCR package; CI also publishes an immutable tag for each Git commit SHA)
 - Security boundary: mock demo only; no provider credentials, local repository paths, databases, persistent disks, or public secrets
 
 The VPS uses ephemeral container state and must remain rented through the submission verification window. The public endpoint is HTTP on the server IP; the current delivery does not claim TLS or a custom domain. The checked-in Render Blueprint remains an optional reproducible template, but the course delivery URL is the verified Aliyun VPS address above.
