@@ -38,6 +38,7 @@ Create the following focused units:
 - `src/feedbackloop/feedback.py`: result classification, log redaction/truncation, and no-progress detection.
 - `src/feedbackloop/llm.py`: provider protocol, OpenAI-compatible client, structured response parser, and deterministic mock client.
 - `src/feedbackloop/context.py`: bounded context construction from task, plan, recent feedback, and relevant file summaries.
+- `src/feedbackloop/executor.py`: bounded local file operations, validation execution, fingerprints, and sensitive-file-free summaries.
 - `src/feedbackloop/store.py`: SQLite repositories for task, iteration, action, approval, feedback, provider metadata, and audit events.
 - `src/feedbackloop/credentials.py`: keyring-backed set/get-status/update/clear service with a testable protocol.
 - `src/feedbackloop/loop.py`: the project-owned feedback loop orchestrator.
@@ -57,6 +58,35 @@ Create the following focused units:
 ## Dependency Order
 
 `Task 0` is a mandatory pre-implementation gate. `Tasks 1–6` provide independent core units in sequence. `Task 7` integrates them. `Task 8` exposes the API and WebUI. `Task 9` adds the demo, packaging, CI, and documentation. A task may run in its own worktree only after its predecessors' public interfaces are committed.
+
+## Execution Status
+
+- Task 0: `e06eb2d` - Claude Code / GLM 5.2 cold-start findings recorded and documents revised.
+- Task 1: `66e85b5` - domain models and state machine.
+- Task 2: `ecefb8c` - workspace boundary and policy engine.
+- Task 3: `b9874d4` - validation detection and bounded runner.
+- Task 4: `1fe2a89` - feedback classification and progress detection.
+- Task 5: `17adba9` - structured provider adapter and bounded context.
+- Task 6: `bffe126` - SQLite audit store and keyring credentials.
+- Task 7: `ba3963d` - deterministic feedback-loop orchestrator.
+- Task 8: `3bad693` - FastAPI and operator WebUI.
+- Task 9: `2638e34` - offline demo, package metadata, Dockerfile, GitLab CI, README and reflection template.
+- Final integration fixes: `a32e4ec` makes created plans approvable and closes SQLite connections
+  per operation; `db2e5ae` rejects all credential operations in public demo mode.
+- Local runtime completion: `00296ae` wires per-task OpenAI-compatible provider configuration,
+  structured validation overrides, the bounded local executor, actionable HITL decisions,
+  approval resume numbering, and deterministic provider-error failure feedback.
+- Review hardening: `c4ff8d5` adds real Git-root verification, explicit plan-file/provider/
+  validation gates, sensitive file-class exclusions, public-demo task isolation,
+  unsupported-action denial, credential status, action status, and audit events.
+- Structured planning and audit closure: `341e057` adds asynchronous OpenAI-compatible Plan
+  generation, authorized scope validation, truthful partial-action persistence, complete state and
+  stop audits, shared sensitive-path policy, restart-safe progress tracking, ordered approval
+  batches, same-kind validation overrides, and the focused TDD evidence in `AGENT_LOG.md`.
+
+Local implementation verification is green (`140 passed, 1 skipped, 1 warning`). Remaining external gates are Docker build/container
+smoke (Docker CLI unavailable), a passing remote GitLab pipeline, a public WebUI URL, and the
+student-authored 1500-2500-character `REFLECTION.md`.
 
 ### Task 0: Cold-Start Specification Validation Gate
 
@@ -100,8 +130,13 @@ git commit -m "docs: record cold-start specification validation"
 
 **Interfaces:**
 - Produces `TaskState`, `TaskEvent`, `Task`, `Action`, `ValidationCommand`, `Feedback`, `Approval`, `IterationRecord`.
-- `Action.read(path)`, `Action.write(path, content)`, and `Action.delete(path)` are the only test and orchestration factories for filesystem actions.
+- `Action.read(path)`, `Action.write(path, content)`, and `Action.delete(path)` are the filesystem factories. `Action.command(command)`, `Action.network(url)`, and `Action.git_push(target)` represent non-filesystem proposals so policy rules are testable before execution.
 - Produces `TaskStateMachine(current: TaskState)` with `transition(event: TaskEvent) -> TaskState` and `can_accept(event: TaskEvent) -> bool`.
+
+The state table is explicit: `RUNNING -> VALIDATION_PASSED` on objective validation, then
+`VALIDATION_PASSED -> SUCCEEDED` on `MARK_SUCCEEDED`; `MARK_SUCCEEDED` is illegal from
+`RUNNING`. `VALIDATION_PASSED` is an internal gate state even though it is not a user-facing
+pause state.
 
 - [ ] **Step 1: Write the failing model/state tests**
 
@@ -117,6 +152,10 @@ def test_approved_plan_enters_running():
 def test_running_task_cannot_skip_to_success_without_validation():
     machine = TaskStateMachine(TaskState.RUNNING)
     assert machine.can_accept(TaskEvent.MARK_SUCCEEDED) is False
+
+def test_command_and_network_actions_are_policy_inputs():
+    assert Action.command("pytest -q").type is ActionType.COMMAND
+    assert Action.network("https://example.test").type is ActionType.NETWORK
 ```
 
 - [ ] **Step 2: Run the focused tests and verify RED**
@@ -151,18 +190,31 @@ git commit -m "feat: add task domain models and state machine"
 - [ ] **Step 1: Write failing boundary and risk tests**
 
 ```python
+def git_workspace(tmp_path):
+    (tmp_path / ".git").mkdir()
+    return Workspace(tmp_path)
+
 def test_resolve_child_rejects_parent_escape(tmp_path):
-    workspace = Workspace(tmp_path)
+    workspace = git_workspace(tmp_path)
     with pytest.raises(PathBoundaryError):
         workspace.resolve_child("../outside.txt")
 
 def test_policy_requires_approval_for_delete(tmp_path):
-    decision = PolicyEngine().check(Action.delete("inside.txt"), Workspace(tmp_path))
+    decision = PolicyEngine().check(Action.delete("inside.txt"), git_workspace(tmp_path))
     assert decision.kind is DecisionKind.REQUIRE_APPROVAL
 
 def test_policy_denies_sensitive_file_read(tmp_path):
-    decision = PolicyEngine().check(Action.read(".env"), Workspace(tmp_path))
+    decision = PolicyEngine().check(Action.read(".env"), git_workspace(tmp_path))
     assert decision.kind is DecisionKind.DENY
+
+def test_sensitive_delete_is_denied_before_delete_approval(tmp_path):
+    decision = PolicyEngine().check(Action.delete(".env"), git_workspace(tmp_path))
+    assert decision.kind is DecisionKind.DENY
+
+def test_network_and_git_push_require_approval(tmp_path):
+    workspace = git_workspace(tmp_path)
+    assert PolicyEngine().check(Action.network("https://example.test"), workspace).kind is DecisionKind.REQUIRE_APPROVAL
+    assert PolicyEngine().check(Action.git_push("origin/main"), workspace).kind is DecisionKind.REQUIRE_APPROVAL
 ```
 
 - [ ] **Step 2: Run tests and verify RED**
@@ -171,7 +223,11 @@ Run `python -m pytest tests/unit/test_workspace.py tests/unit/test_policy.py -q`
 
 - [ ] **Step 3: Implement canonical path checks and explicit risk rules**
 
-Resolve symlinks before containment checks, compare normalized paths against the repository root, and classify delete, network, Git push, sensitive-file access, shell chaining, and undeclared commands. Keep the policy pure and deterministic.
+`Workspace.resolve_repo()` requires a `.git` directory or worktree file and returns the canonical
+repository root; tests create a temporary `.git` marker. Resolve symlinks before containment
+checks, compare normalized paths against the repository root, and classify delete, network, Git
+push, sensitive-file access, shell chaining, and undeclared commands. Sensitive-file denial wins
+over delete approval. Keep the policy pure and deterministic.
 
 - [ ] **Step 4: Run tests and verify GREEN**
 
@@ -188,12 +244,16 @@ git commit -m "feat: enforce workspace boundaries and action policy"
 
 **Files:**
 - Create: `src/feedbackloop/validation.py`
+- Modify: `src/feedbackloop/models.py` to add the shared `CommandResult` record consumed by
+  feedback classification and the loop.
 - Test: `tests/unit/test_validation.py`, `tests/integration/test_command_runner.py`
 
 **Interfaces:**
 - `ValidationDetector.detect(repo_root: Path) -> list[ValidationCommand]`.
 - `ValidationDetector.apply_overrides(detected, overrides) -> list[ValidationCommand]`.
 - `CommandRunner.run(command: ValidationCommand, cwd: Path) -> CommandResult`.
+- `CommandResult(kind, exit_code, stdout, stderr, timed_out, duration_seconds, error)` is an
+  immutable serializable result; `stdout`/`stderr` are already bounded by the runner.
 
 - [ ] **Step 1: Write failing detection and execution tests**
 

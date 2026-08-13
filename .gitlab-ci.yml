@@ -1,0 +1,12 @@
+image: python:3.12
+
+stages:
+  - test
+
+unit-test:
+  stage: test
+  script:
+    - python -m pip install --upgrade pip
+    - python -m pip install ".[test]"
+    - python -m pytest -q
+    - python -m demo.scenario
